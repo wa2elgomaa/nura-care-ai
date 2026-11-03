@@ -1,0 +1,15 @@
+# Simulated cameras. Put a classroom clip at sim/clips/room1.mp4.
+paths:
+  room1:
+    runOnInit: >
+      ffmpeg -re -stream_loop -1 -i /clips/room1.mp4 -c copy
+      -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes
+
+  # Synthetic test pattern (no clip needed) for pipeline and latency checks.
+  testpattern:
+    runOnInit: >
+      ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=10
+      -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes

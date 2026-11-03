@@ -1,0 +1,22 @@
+# GPU override (Linux + NVIDIA Container Toolkit):
+#   docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai up -d
+# Frigate also needs a TensorRT/ONNX detector section in edge/frigate/config.yml.
+services:
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION:-stable}-tensorrt
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

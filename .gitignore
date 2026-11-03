@@ -1,0 +1,84 @@
+# Secrets (NEVER commit)
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+# Dependencies
+node_modules/
+.pnpm-store/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+ENV/
+env/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+out/
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.jest/
+tests/images/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+.docker/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+caddy-root.crt
+bundle.tar
+bundle.sig
+test-bundle/
+
+# Frigate runtime (keep config.yml, ignore state)
+edge/frigate/.exports
+edge/frigate/.jwt_secret
+edge/frigate/.runtime_state.json.lock
+edge/frigate/.vacuum
+edge/frigate/backup_config.yaml
+edge/frigate/frigate.db*
+edge/frigate/*.db
+edge/frigate/*.db-shm
+edge/frigate/*.db-wal
+edge/frigate/go2rtc_homekit.yml

@@ -1,0 +1,429 @@
+# =============================================================================
+# NURA - local development stack (edge box + simulated school + local "cloud")
+#
+#   docker compose --env-file .env up -d                      # edge infrastructure only
+#   docker compose --env-file .env --profile sim --profile app up -d
+#   docker compose --env-file .env --profile cloud --profile dev up -d
+#
+# Profiles
+#   (none)   core edge infrastructure: Postgres, Mosquitto, NATS, Keycloak, Qdrant,
+#            ntfy, Apprise, Frigate, Caddy
+#   app      NURA-owned services. They default to a "whoami" placeholder image so the
+#            whole stack boots before the real services exist. Set *_IMAGE in .env.
+#   sim      fake school: looped-video RTSP camera + simulated occupancy sensor
+#   sensing  RuView sensing server (set RUVIEW_IMAGE from the RuView README)
+#   ai       local LLM runtime (Ollama)
+#   cloud    local copy of the control plane that you will deploy on Railway
+#   dev      developer tools (Mailpit)
+#
+# Networks mirror the school VLANs. "internal: true" means no route to the internet.
+# Only sync-agent joins uplink_net, so disconnecting it simulates an internet outage.
+# =============================================================================
+name: nura
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# NURA-owned services share this shape; override image/env per service.
+x-nura-stub: &nura-stub
+  <<: *common
+  profiles: [ "app" ]
+  networks: [ core_net ]
+
+x-nura-env: &nura-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-nura}:${POSTGRES_PASSWORD}@postgres:5432/nura
+  NATS_URL: nats://nats:4222
+  MQTT_URL: mqtt://mosquitto:1883
+  OIDC_ISSUER: http://keycloak:8080/realms/nura
+  SITE_ID: ${SITE_ID:-dev-site-001}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+networks:
+  lan_net: # school LAN: staff devices reach Caddy here (has internet in dev)
+  core_net:
+    # service-to-service on the box, no internet
+    internal: true
+  camera_net:
+    # cameras <-> edge only, no internet
+    internal: true
+  sensor_net:
+    # ESP32 / sensor simulator <-> edge only, no internet
+    internal: true
+  uplink_net: # stands in for "the internet" (edge sync-agent <-> cloud)
+  cloud_net:
+    # cloud services <-> cloud database
+    internal: true
+
+volumes:
+  pg_data:
+  nats_data:
+  mosquitto_data:
+  ntfy_cache:
+  ntfy_etc:
+  frigate_media:
+  caddy_data:
+  caddy_config:
+  sync_state:
+  cloud_data:
+  ollama_models:
+  cloud_pg_data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # EDGE: core infrastructure
+  # ---------------------------------------------------------------------------
+  postgres:
+    <<: *common
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nura}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./edge/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [ core_net ]
+
+  mosquitto:
+    <<: *common
+    image: eclipse-mosquitto:${MOSQUITTO_VERSION:-2}
+    volumes:
+      - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    networks: [ core_net, sensor_net ]
+
+  nats:
+    <<: *common
+    image: nats:${NATS_VERSION:-2.10-alpine}
+    command: [ "-js", "-sd", "/data", "-m", "8222" ]
+    volumes:
+      - nats_data:/data
+    networks: [ core_net ]
+
+  keycloak:
+    <<: *common
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.0}
+    # Dev mode. For production use "start --optimized" with a pre-built image,
+    # a real hostname and TLS (see README).
+    command: [ "start-dev" ]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-nura}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [ core_net ]
+
+  # Qdrant removed - using pgvector in Postgres instead (Railway compatibility)
+
+  ntfy:
+    <<: *common
+    image: binwiederhier/ntfy:${NTFY_VERSION:-v2.11.0}
+    command: [ "serve" ]
+    environment:
+      NTFY_BASE_URL: https://ntfy.nura.localhost:${HTTPS_PORT:-8443}
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_AUTH_FILE: /etc/ntfy/user.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+      - ntfy_etc:/etc/ntfy
+    networks: [ core_net ]
+
+  apprise:
+    <<: *common
+    image: caronc/apprise:${APPRISE_VERSION:-latest} # pin a version for real use
+    networks: [ core_net ]
+
+  frigate:
+    <<: *common
+    image: ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION:-stable}
+    shm_size: 256mb # raise with camera count
+    stop_grace_period: 30s
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-change-me}
+    volumes:
+      - ./edge/frigate:/config
+      - frigate_media:/media/frigate
+    tmpfs:
+      - /tmp/cache:size=1000000000
+    depends_on:
+      - mosquitto
+    networks: [ camera_net, core_net ]
+    # GPU: add -f compose.gpu.yaml (NVIDIA Container Toolkit required)
+
+  caddy:
+    <<: *common
+    image: caddy:${CADDY_VERSION:-2}-alpine
+    ports:
+      - "${HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./edge/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [ lan_net, core_net ]
+
+  # ---------------------------------------------------------------------------
+  # EDGE: NURA-owned services (placeholders until real images exist)
+  # ---------------------------------------------------------------------------
+  nura-api:
+    <<: *nura-stub
+    image: ${NURA_API_IMAGE:-traefik/whoami}
+    environment:
+      <<: *nura-env
+      PORT: "80"
+
+  nura-ui:
+    <<: *nura-stub
+    image: ${NURA_UI_IMAGE:-traefik/whoami}
+    environment:
+      API_URL: http://nura-api
+
+  nura-perception:
+    # detector + tracker (Python); reads Frigate's restream
+    <<: *nura-stub
+    build:
+      context: ./services/nura-perception
+    image: ${NURA_PERCEPTION_IMAGE:-nura/perception:dev}
+    environment:
+      <<: *nura-env
+      RTSP_BASE: rtsp://frigate:8554
+      FRIGATE_API: http://frigate:5000
+      DETECTION_CONFIDENCE: ${DETECTION_CONFIDENCE:-0.5}
+      FALL_THRESHOLD: ${FALL_THRESHOLD:-0.7}
+    depends_on:
+      - frigate
+      - nats
+    networks: [ core_net, camera_net ]
+
+  nura-sensor-adapter:
+    # MQTT (RuView / sensors) -> NATS events
+    <<: *nura-stub
+    image: ${NURA_SENSOR_ADAPTER_IMAGE:-traefik/whoami}
+    environment:
+      <<: *nura-env
+      MQTT_TOPIC_PREFIX: nura/sensors
+
+  nura-rules:
+    # rule engine + violation detection orchestrator
+    <<: *nura-stub
+    build:
+      context: ./services/nura-rules
+    image: ${NURA_RULES_IMAGE:-nura/rules:dev}
+    environment:
+      <<: *nura-env
+      PORT: "3003"
+      RAG_SERVICE_URL: http://nura-rag:3002
+      VLM_SERVICE_URL: http://nura-vlm:8001
+      SUPERVISION_THRESHOLD_SECONDS: ${SUPERVISION_THRESHOLD_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      nura-rag:
+        condition: service_started
+    ports:
+      - "3003:3003"
+
+  nura-rag:
+    # clause-aware ingestion + retrieval (pgvector)
+    <<: *nura-stub
+    build:
+      context: ./services/nura-rag
+    image: ${NURA_RAG_IMAGE:-nura/rag:dev}
+    environment:
+      <<: *nura-env
+      PORT: "3002"
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-Xenova/all-MiniLM-L6-v2}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.7}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    ports:
+      - "3002:3002"
+
+  nura-notifier:
+    # severity routing, escalation, ack
+    <<: *nura-stub
+    image: ${NURA_NOTIFIER_IMAGE:-traefik/whoami}
+    environment:
+      <<: *nura-env
+      NTFY_URL: http://ntfy:80
+      APPRISE_URL: http://apprise:8000
+
+  nura-vlm:
+    # Vision-Language Model for scene understanding
+    <<: *nura-stub
+    build:
+      context: ./services/nura-vlm
+    image: ${NURA_VLM_IMAGE:-nura/vlm:dev}
+    environment:
+      <<: *nura-env
+      OLLAMA_URL: http://ollama:11434
+      VLM_MODEL: ${VLM_MODEL:-llava:13b}
+      VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
+      VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
+    depends_on:
+      - ollama
+      - nats
+    ports:
+      - "8001:8001"
+    networks: [ core_net ]
+
+  sync-agent:
+    # only service allowed to reach the "internet"
+    <<: *nura-stub
+    container_name: nura-sync-agent
+    build:
+      context: ./services/sync-agent
+    image: ${NURA_SYNC_AGENT_IMAGE:-nura/sync-agent:dev}
+    environment:
+      CLOUD_URL: http://cloud-api:8080
+      SITE_CLAIM_CODE: ${SITE_CLAIM_CODE:-dev-claim-code}
+      STATE_DIR: /var/lib/nura
+      UPDATE_PUBLIC_KEY_FILE: /keys/update_signing_key.pub
+      UPDATE_NAMES: rule-pack
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - sync_state:/var/lib/nura
+      # Public key only. Create it first (README step 2), otherwise Docker creates a directory here.
+      - ./secrets/update_signing_key.pub:/keys/update_signing_key.pub:ro
+    networks: [ core_net, uplink_net ]
+
+  # ---------------------------------------------------------------------------
+  # OPTIONAL: local AI runtime
+  # ---------------------------------------------------------------------------
+  ollama:
+    <<: *common
+    profiles: [ "ai" ]
+    container_name: nura-ollama
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [ core_net ]
+    # core_net has no internet. To pull models in dev:
+    #   docker network connect nura_lan_net nura-ollama
+    #   docker exec nura-ollama ollama pull <model>
+    #   docker network disconnect nura_lan_net nura-ollama
+
+    # ---------------------------------------------------------------------------
+    # SIMULATED SCHOOL
+    # ---------------------------------------------------------------------------
+  sim-cam:
+    <<: *common
+    profiles: [ "sim" ]
+    image: bluenviron/mediamtx:${MEDIAMTX_VERSION:-latest}-ffmpeg
+    volumes:
+      - ./sim/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ./sim/clips:/clips:ro
+    networks: [ camera_net ]
+
+  sensor-sim:
+    # publishes fake room occupancy; stand-in for ESP32/RuView
+    <<: *common
+    profiles: [ "sim" ]
+    image: eclipse-mosquitto:${MOSQUITTO_VERSION:-2}
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        while true; do
+          n=$$(( $$(date +%s) / 20 % 3 ))
+          mosquitto_pub -h mosquitto -t nura/sensors/room3/occupancy \
+            -m "{\"zone\":\"room3\",\"count\":$$n,\"ts\":$$(date +%s)}"
+          sleep 5
+        done
+    depends_on:
+      - mosquitto
+    networks: [ sensor_net ]
+
+  ruview:
+    <<: *common
+    profiles: [ "sensing" ]
+    # Take the image name, ports and env vars from the RuView README, then set
+    # RUVIEW_IMAGE in .env. Real ESP32 nodes must reach this container over the
+    # sensor VLAN (host networking or macvlan on the real box); a bridge network
+    # alone only works with the simulated data mode.
+    image: ${RUVIEW_IMAGE:-ruview-image-not-set}
+    networks: [ sensor_net, core_net ]
+
+  # ---------------------------------------------------------------------------
+  # LOCAL "CLOUD" (deploy these same images on Railway)
+  # ---------------------------------------------------------------------------
+  cloud-db:
+    <<: *common
+    profiles: [ "cloud" ]
+    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    environment:
+      POSTGRES_USER: cloud
+      POSTGRES_PASSWORD: ${CLOUD_DB_PASSWORD:?set CLOUD_DB_PASSWORD in .env}
+      POSTGRES_DB: nura_cloud
+    volumes:
+      - cloud_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cloud -d nura_cloud" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [ cloud_net ]
+
+  cloud-api:
+    # device enrollment/auth, event ingest, signed updates (dev: file-backed)
+    <<: *common
+    profiles: [ "cloud" ]
+    build:
+      context: ./services/cloud-api
+    image: ${CLOUD_API_IMAGE:-nura/cloud-api:dev}
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      CLAIM_CODES: ${SITE_CLAIM_CODE:-dev-claim-code}:${SITE_ID:-dev-site-001}
+      ADMIN_TOKEN: ${CLOUD_ADMIN_TOKEN:-change-me-dev-only}
+      DEVICE_TOKEN_TTL_SECONDS: "900"
+      UPDATE_PUBLIC_KEY_FILE: /keys/update_signing_key.pub # public key only; the cloud never holds the signing key
+      DATABASE_URL: postgresql://cloud:${CLOUD_DB_PASSWORD}@cloud-db:5432/nura_cloud # not used yet
+    ports:
+      - "${CLOUD_API_PORT:-8081}:8080"
+    volumes:
+      - cloud_data:/data
+      - ./secrets/update_signing_key.pub:/keys/update_signing_key.pub:ro
+    networks: [ cloud_net, uplink_net ]
+
+  alert-relay:
+    # text-only alert fan-out to push / SMS / email
+    <<: *common
+    profiles: [ "cloud" ]
+    image: ${ALERT_RELAY_IMAGE:-traefik/whoami}
+    environment:
+      DATABASE_URL: postgresql://cloud:${CLOUD_DB_PASSWORD}@cloud-db:5432/nura_cloud
+      SMTP_URL: smtp://mailpit:1025
+      MESSAGE_RETENTION_HOURS: "24"
+    networks: [ cloud_net, uplink_net ]
+
+  # ---------------------------------------------------------------------------
+  # DEV TOOLS
+  # ---------------------------------------------------------------------------
+  mailpit:
+    <<: *common
+    profiles: [ "dev" ]
+    image: axllent/mailpit:${MAILPIT_VERSION:-latest}
+    networks: [ core_net, uplink_net ]

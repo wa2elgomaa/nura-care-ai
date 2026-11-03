@@ -1,0 +1,27 @@
+🧪 NURA Pipeline Integration Test
+==================================
+
+Test 1: Service Health Checks
+------------------------------
+[0;32m✓ PASS[0m: VLM service is responding
+[0;32m✓ PASS[0m: RAG service is healthy
+[0;32m✓ PASS[0m: Rules engine is healthy
+
+Test 2: RAG Rule Matching
+-------------------------
+[1;33mℹ INFO[0m: Querying RAG for supervision violation...
+[0;32m✓ PASS[0m: RAG returned 1 matching rules
+[1;33mℹ INFO[0m: Top match: RULE-001 (similarity: 0.6595902652159292)
+[0;32m✓ PASS[0m: Correct rule matched (RULE-001 - Supervision)
+[0;32m✓ PASS[0m: Similarity score above threshold (0.6595902652159292 > 0.5)
+[1;33mℹ INFO[0m: Query time: 12ms
+[0;32m✓ PASS[0m: RAG query time under 100ms target
+
+Test 3: VLM Scene Analysis
+---------------------------
+[1;33mℹ INFO[0m: Skipping VLM test (no test_classroom.jpg found)
+[1;33mℹ INFO[0m: Create a test image: curl -o test_classroom.jpg 'https://via.placeholder.com/640x480.jpg?text=Classroom'
+
+Test 4: Rules Engine - Detection Event
+---------------------------------------
+[1;33mℹ INFO[0m: Sending detection event via NATS...

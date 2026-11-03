@@ -1,0 +1,31 @@
+{
+	local_certs
+	auto_https disable_redirects
+}
+
+nura.localhost {
+	handle_path /api/* {
+		reverse_proxy nura-api:80
+	}
+	handle {
+		reverse_proxy nura-ui:80
+	}
+}
+
+auth.nura.localhost {
+	reverse_proxy keycloak:8080
+}
+
+# DEV ONLY: Frigate's port 5000 has no authentication. In production expose
+# only through SSO (e.g. an OIDC proxy) or use Frigate's authenticated port.
+frigate.nura.localhost {
+	reverse_proxy frigate:5000
+}
+
+ntfy.nura.localhost {
+	reverse_proxy ntfy:80
+}
+
+mail.nura.localhost {
+	reverse_proxy mailpit:8025
+}
