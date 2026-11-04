@@ -17,14 +17,17 @@ RUN apt-get update && \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
+# Copy shared detectors package first
+COPY ./packages/nura-detectors /app/packages/nura-detectors
 
-# Install Python dependencies
+# Copy requirements
+COPY ./services/nura-vlm/requirements.txt .
+
+# Install Python dependencies (including shared package)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY src/ ./src/
+COPY ./services/nura-vlm/src/ ./src/
 
 # Create directories for images
 RUN mkdir -p /tmp/vlm_images

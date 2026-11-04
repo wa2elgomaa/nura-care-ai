@@ -20,8 +20,8 @@ services:
   # Primary VLM instance (existing)
   nura-vlm:
     build:
-      context: ./services/nura-vlm
-      dockerfile: Dockerfile.mac
+      context: .  # Root context to access packages/
+      dockerfile: ./services/nura-vlm/Dockerfile.mac
     environment:
       OLLAMA_URL: http://host.docker.internal:11434  # Native Ollama on Mac
       VLM_MODEL: ${VLM_MODEL:-llava:7b}

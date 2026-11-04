@@ -54,7 +54,7 @@ class SupervisionDetector:
         # These will vary based on camera height and angle
         # Typical classroom: adults 150-250px, children 80-150px
         self.adult_height_min = 150
-        self.  = 150
+        self.child_height_max = 150
 
         logger.info(f"SupervisionDetector initialized (required ratio: {required_ratio}, ML: {use_ml_model})")
 

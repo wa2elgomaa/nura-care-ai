@@ -61,24 +61,42 @@ class HybridRouter:
         """
         self.vlm_client = vlm_client
 
-        # Import detectors (these will use OpenCV, no external dependencies)
+        # Lazy-load detectors on first use
+        self._detectors_initialized = False
+        self.violence_detector = None
+        self.distress_detector = None
+        self.supervision_detector = None
+        self.body_language_detector = None
+
+    def _init_detectors(self):
+        """Lazy-load detectors on first use"""
+        if self._detectors_initialized:
+            return
+
+        self._detectors_initialized = True
+
+        # Import detectors from shared package
         try:
-            # These imports will work once the perception service is built
-            from detectors.violence_detector import ViolenceDetector
-            from detectors.distress_detector import DistressDetector
-            from detectors.supervision_detector import SupervisionDetector
+            from nura_detectors import (
+                ViolenceDetector,
+                DistressDetector,
+                SupervisionDetector,
+                BodyLanguageDetector
+            )
 
             self.violence_detector = ViolenceDetector()
             self.distress_detector = DistressDetector()
             self.supervision_detector = SupervisionDetector()
+            self.body_language_detector = BodyLanguageDetector()
 
-            logger.info("✓ Fast-path detectors initialized")
-        except ImportError as e:
+            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language)")
+        except (ImportError, Exception) as e:
             logger.warning(f"Fast-path detectors not available: {e}")
             logger.warning("Will fall back to VLM-only mode")
             self.violence_detector = None
             self.distress_detector = None
             self.supervision_detector = None
+            self.body_language_detector = None
 
     async def analyze_frame(
         self,
@@ -96,6 +114,9 @@ class HybridRouter:
             ViolationAlert with results
         """
         start_time = time.time()
+
+        # Lazy-init detectors on first use
+        self._init_detectors()
 
         # Step 1: Run fast-path detectors (if available)
         if self._fast_path_available():
@@ -174,7 +195,8 @@ class HybridRouter:
         return (
             self.violence_detector is not None and
             self.distress_detector is not None and
-            self.supervision_detector is not None
+            self.supervision_detector is not None and
+            self.body_language_detector is not None
         )
 
     async def _run_fast_path(self, frame: np.ndarray) -> Dict:
@@ -188,11 +210,22 @@ class HybridRouter:
         violence_result = self.violence_detector.detect(frame)
         distress_result = self.distress_detector.detect(frame)
         supervision_result = self.supervision_detector.detect(frame)
+        body_language_result = self.body_language_detector.detect(frame)
+
+        # Log detector scores for debugging
+        logger.info(
+            f"Fast-path scores: "
+            f"violence={violence_result.confidence:.2f} (detected={violence_result.violence_detected}), "
+            f"distress={distress_result.confidence:.2f} (detected={distress_result.distress_detected}), "
+            f"supervision={supervision_result.confidence:.2f} (violation={supervision_result.violation_detected}), "
+            f"body_language={body_language_result.power_imbalance_score:.2f} (intimidation={body_language_result.intimidation_detected})"
+        )
 
         return {
             "violence": asdict(violence_result),
             "distress": asdict(distress_result),
-            "supervision": asdict(supervision_result)
+            "supervision": asdict(supervision_result),
+            "body_language": asdict(body_language_result)
         }
 
     def _make_routing_decision(self, fast_path_results: Dict) -> Dict:
@@ -209,6 +242,7 @@ class HybridRouter:
         violence = fast_path_results["violence"]
         distress = fast_path_results["distress"]
         supervision = fast_path_results["supervision"]
+        body_language = fast_path_results["body_language"]
 
         # Check for high-confidence violations (direct alert)
         if violence["violence_detected"] and violence["confidence"] > 0.9:
@@ -216,6 +250,13 @@ class HybridRouter:
                 "route": "direct_alert",
                 "confidence": violence["confidence"],
                 "primary_violation": "violence"
+            }
+
+        if body_language["intimidation_detected"] and body_language["confidence"] > 0.85:
+            return {
+                "route": "direct_alert",
+                "confidence": body_language["confidence"],
+                "primary_violation": "psychological_bullying"
             }
 
         if distress["distress_detected"] and distress["confidence"] > 0.85:
@@ -239,6 +280,14 @@ class HybridRouter:
                 "route": "vlm_validation",
                 "confidence": violence["confidence"],
                 "primary_violation": "violence"
+            }
+
+        if (body_language["intimidation_detected"] and
+            0.5 < body_language["confidence"] <= 0.85):
+            return {
+                "route": "vlm_validation",
+                "confidence": body_language["confidence"],
+                "primary_violation": "psychological_bullying"
             }
 
         if (distress["distress_detected"] and
@@ -275,9 +324,42 @@ class HybridRouter:
             logger.error("VLM client not initialized")
             return "VLM unavailable"
 
-        # TODO: Call VLM with improved prompts
-        # For now, return placeholder
-        return "VLM analysis would go here"
+        # Import here to avoid circular dependency
+        import base64
+        import cv2
+        from src.prompts.childcare_prompts import get_prompt_with_context
+
+        # Encode frame to base64
+        _, buffer = cv2.imencode('.jpg', frame)
+        image_b64 = base64.b64encode(buffer).decode('utf-8')
+
+        # Determine prompt type based on context
+        prompt_type = "general"
+        fast_path_context = {}
+
+        if context:
+            # Check which violation was flagged
+            if context.get("violence", {}).get("violence_detected"):
+                prompt_type = "violence"
+                fast_path_context = {"violence": context["violence"]}
+            elif context.get("distress", {}).get("distress_detected"):
+                prompt_type = "distress"
+                fast_path_context = {"distress": context["distress"]}
+            elif context.get("supervision", {}).get("violation_detected"):
+                prompt_type = "supervision"
+                fast_path_context = {"supervision": context["supervision"]}
+
+        # Get context-aware prompt
+        prompt = get_prompt_with_context(prompt_type, fast_path_context)
+
+        # Call VLM
+        result = await self.vlm_client.analyze_scene(
+            image_base64=image_b64,
+            prompt=prompt,
+            temperature=0.3
+        )
+
+        return result.get("raw_response", "No response from VLM")
 
     def _create_alert_from_fast_path(
         self,
@@ -286,7 +368,17 @@ class HybridRouter:
     ) -> ViolationAlert:
         """Create alert from fast-path detection"""
         violation_type = decision["primary_violation"]
-        result = fast_path_results[violation_type]
+
+        # Map violation type to detector result key
+        detector_key_map = {
+            "violence": "violence",
+            "distress": "distress",
+            "supervision": "supervision",
+            "psychological_bullying": "body_language"
+        }
+
+        detector_key = detector_key_map.get(violation_type, violation_type)
+        result = fast_path_results.get(detector_key, {})
 
         return ViolationAlert(
             violation_detected=True,
