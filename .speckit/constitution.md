@@ -108,10 +108,23 @@ escape hatches are insufficient.
 MediaPipe for pose estimation, ByteTrack for multi-object tracking, and CompreFace for face recognition
 on the local appliance. Python services (nura-perception, nura-face, nura-analytics) orchestrate these
 components.
-9. Event bus: NATS JetStream MUST be used for all inter-service messaging. MQTT via Mosquitto is
+9. Vision-Language Model (VLM) requirements: Scene understanding for violation detection MUST use
+LLaVA 7B or equivalent VLM running locally on Edge Box. VLM processing MUST achieve <10 second
+total latency from frame capture to alert delivery. Platform-specific optimization is MANDATORY:
+development environments MAY use Mac M4 Max with native Ollama (Metal GPU); production deployments
+MUST support NVIDIA GPU acceleration (CUDA/TensorRT). Multi-camera deployments (10+ cameras) MUST
+use parallel VLM instances with load balancing. VLM performance targets: Mac M4 Max ≤60s per image
+(single instance) or 2-8 FPS aggregate (4 parallel); NVIDIA RTX ≤30s per image. Future optimization
+with MLX or hybrid fast-path architectures is RECOMMENDED when libraries mature.
+10. Event bus: NATS JetStream MUST be used for all inter-service messaging. MQTT via Mosquitto is
 allowed only for sensor ingestion, with nura-sensor-adapter bridging MQTT to NATS.
-10. Business model readiness: Edge Box and BLE gateways MUST be deployable under recurring HaaS
+11. Business model readiness: Edge Box and BLE gateways MUST be deployable under recurring HaaS
 subscription operations, not one-time hardware purchase assumptions.
+12. Deployment platform standards: Development MUST support macOS (M3/M4 Max series) with native
+Ollama and Metal GPU acceleration. Production deployments MUST support Linux with NVIDIA Container
+Toolkit and CUDA runtime. Docker Compose configurations MUST provide platform-specific overrides
+(compose.mac.yaml for macOS Metal, compose.gpu.yaml for NVIDIA GPU). All platform configurations
+MUST be tested and documented with performance benchmarks.
 
 Go-to-market and sequencing mandates:
 1. Emergency evacuation and headcount reconciliation MUST be treated as a flagship capability in

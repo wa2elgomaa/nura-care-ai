@@ -1,22 +1,265 @@
-# GPU override (Linux + NVIDIA Container Toolkit):
-#   docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai up -d
-# Frigate also needs a TensorRT/ONNX detector section in edge/frigate/config.yml.
+# =============================================================================
+# GPU Deployment Environment Override (Windows/Linux with NVIDIA RTX)
+#
+# Usage:
+#   docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai --profile app up -d
+#
+# Requirements:
+#   - NVIDIA GPU (RTX 3060 or better recommended)
+#   - NVIDIA Container Toolkit installed
+#   - Docker with GPU support
+#
+# Optimizations:
+#   - CUDA acceleration for Ollama
+#   - TensorRT optimization for inference
+#   - Multi-instance GPU (MIG) support for parallel processing
+#   - GPU memory management
+# =============================================================================
+name: nura
+
 services:
-  frigate:
-    image: ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION:-stable}-tensorrt
+  # ---------------------------------------------------------------------------
+  # VLM with CUDA/GPU Acceleration
+  # ---------------------------------------------------------------------------
+
+  # Primary VLM instance with GPU
+  nura-vlm:
+    build:
+      context: ./services/nura-vlm
+      dockerfile: Dockerfile.gpu
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
+      VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
+      VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
+      CUDA_VISIBLE_DEVICES: "0"  # Use first GPU
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1
               capabilities: [gpu]
 
-  ollama:
+  # Additional VLM instances for parallel processing (if multiple GPUs available)
+  nura-vlm-2:
+    profiles: [ "app", "vlm-parallel" ]
+    build:
+      context: ./services/nura-vlm
+      dockerfile: Dockerfile.gpu
+    image: ${NURA_VLM_IMAGE:-nura/vlm:dev}
+    restart: unless-stopped
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
+      VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
+      VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
+      CUDA_VISIBLE_DEVICES: "0"  # Share GPU or use "1" if multiple GPUs
+    ports:
+      - "8002:8001"
+    networks: [ core_net ]
+    depends_on:
+      - nats
+      - ollama
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1
               capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # Ollama with GPU Support
+  # ---------------------------------------------------------------------------
+  ollama:
+    profiles: [ "ai" ]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}  # Parallel requests
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-2}  # Models in VRAM
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-true}  # Faster attention
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [ core_net ]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all  # Use all available GPUs
+              capabilities: [gpu, compute, utility]
+    # Expose for model management
+    ports:
+      - "11434:11434"
+
+  # ---------------------------------------------------------------------------
+  # Frigate with GPU acceleration for object detection
+  # ---------------------------------------------------------------------------
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:${FRIGATE_VERSION:-stable}-tensorrt
+    runtime: nvidia
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-change-me}
+      # GPU acceleration for decoding/encoding
+      LIBVA_DRIVER_NAME: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video, compute]
+
+  # ---------------------------------------------------------------------------
+  # Perception service with GPU acceleration
+  # ---------------------------------------------------------------------------
+  nura-perception:
+    build:
+      context: ./services/nura-perception
+      dockerfile: Dockerfile.gpu
+    environment:
+      USE_CUDA: "true"
+      DETECTION_BATCH_SIZE: "16"  # Larger batches with GPU
+      TORCH_CUDA_ARCH_LIST: "8.6"  # RTX 30xx series, adjust for your GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute]
+
+  # ---------------------------------------------------------------------------
+  # RAG service with GPU-accelerated embeddings
+  # ---------------------------------------------------------------------------
+  nura-rag:
+    build:
+      context: ./services/nura-rag
+      dockerfile: Dockerfile.gpu
+    environment:
+      USE_GPU_EMBEDDINGS: "true"
+      EMBEDDING_BATCH_SIZE: "64"  # Larger batches with GPU
+      CUDA_VISIBLE_DEVICES: "0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute]
+
+  # ---------------------------------------------------------------------------
+  # Postgres with optimizations for GPU system
+  # ---------------------------------------------------------------------------
+  postgres:
+    # Assume less RAM than M4 Max but still decent
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=16GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=256MB
+
+# =============================================================================
+# GPU Deployment Notes
+# =============================================================================
+#
+# System Requirements:
+# - NVIDIA GPU: RTX 3060 (12GB VRAM) or better
+#   - RTX 3060 12GB: 1-2 instances, ~15-30s per image
+#   - RTX 3070 8GB: 1-2 instances, ~10-20s per image
+#   - RTX 3080 10GB: 2-3 instances, ~8-15s per image
+#   - RTX 3090 24GB: 4+ instances, ~5-10s per image
+#   - RTX 4090 24GB: 4+ instances, ~3-8s per image
+#
+# - NVIDIA Driver: 525.60.13 or newer
+# - NVIDIA Container Toolkit: 1.14.0 or newer
+# - Docker: 24.0.0 or newer with GPU support
+# - CUDA: 12.0 or newer (included in Ollama image)
+#
+# Installation (Ubuntu/Debian):
+# 1. Install NVIDIA drivers:
+#    sudo apt update
+#    sudo apt install nvidia-driver-535
+#
+# 2. Install NVIDIA Container Toolkit:
+#    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+#    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+#    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+#      sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+#      sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+#    sudo apt update
+#    sudo apt install -y nvidia-container-toolkit
+#    sudo nvidia-ctk runtime configure --runtime=docker
+#    sudo systemctl restart docker
+#
+# 3. Verify GPU access:
+#    docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+#
+# 4. Start services:
+#    docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai --profile app up -d
+#
+# Installation (Windows with WSL2):
+# 1. Install NVIDIA GPU driver for Windows (not WSL)
+# 2. Install WSL2 and Docker Desktop
+# 3. Enable WSL2 integration in Docker Desktop settings
+# 4. Install NVIDIA Container Toolkit in WSL2:
+#    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+#    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+#    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+#      sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+#      sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+#    sudo apt update
+#    sudo apt install -y nvidia-container-toolkit
+# 5. Restart Docker Desktop
+# 6. Verify: docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+#
+# Performance Tuning:
+# - OLLAMA_NUM_PARALLEL: Number of parallel inference requests (2-4 for most GPUs)
+# - OLLAMA_MAX_LOADED_MODELS: Keep models in VRAM (1-2 depending on VRAM)
+# - CUDA_VISIBLE_DEVICES: Control which GPU each service uses
+# - Batch sizes: Larger with more VRAM, smaller with less
+#
+# Memory Management:
+# - llava:7b model: ~4-5GB VRAM per instance
+# - llava:13b model: ~7-8GB VRAM per instance
+# - Reserve 2-3GB VRAM for overhead
+# - Examples:
+#   - 8GB GPU: 1 instance of 7b model
+#   - 12GB GPU: 2 instances of 7b model OR 1 instance of 13b
+#   - 16GB GPU: 3 instances of 7b model OR 2 instances of 13b
+#   - 24GB GPU: 4+ instances of 7b model OR 3 instances of 13b
+#
+# Multi-GPU Setup:
+# - Set CUDA_VISIBLE_DEVICES per service
+# - Example for 2 GPUs:
+#   - nura-vlm: CUDA_VISIBLE_DEVICES=0
+#   - nura-vlm-2: CUDA_VISIBLE_DEVICES=1
+#   - ollama: count: all (uses both)
+#
+# Monitoring:
+# - Watch GPU usage: nvidia-smi -l 1
+# - Container GPU usage: docker stats
+# - Ollama logs: docker compose logs -f ollama
+# - VLM performance: check test_results/ after testing
+#
+# Expected Performance (RTX 3080 10GB):
+# - Single instance: 10-20s per image
+# - 2 parallel instances: 0.1-0.2 FPS aggregate (2-4 cameras @ 1 FPS)
+# - vs Mac M4 Max native: 2-3x slower but still production viable
+#
+# Troubleshooting:
+# - "could not select device driver": Install NVIDIA Container Toolkit
+# - "nvidia-smi not found": Install NVIDIA drivers
+# - "out of memory": Reduce instances or use smaller model
+# - Slow performance: Check nvidia-smi for GPU utilization
+#
+# =============================================================================
