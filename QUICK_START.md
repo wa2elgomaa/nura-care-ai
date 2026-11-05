@@ -944,6 +944,46 @@ FRAME_SAMPLE_RATE = 60  # Every 60 frames = ~2s (faster, may miss events)
 }
 ```
 
+### 🎥 Camera Feed Simulator
+Script: tools/testing/simulate-camera-feeds.py
+
+Usage Examples
+1. Single Camera (Fighting Video)
+
+```bash
+python3 tools/testing/simulate-camera-feeds.py \
+  tests/data/Videos/FightingA_Part11/Fighting003_x264A.mp4
+```
+
+2. Multiple Cameras (Fighting + Normal)
+
+```bash
+python3 tools/testing/simulate-camera-feeds.py \
+  tests/data/Videos/FightingA_Part11/Fighting003_x264A.mp4 \
+  "tests/data/Videos/Normal_Videos_for_Event_Recognition/Normal_Videos_for_Event_Recognition/Normal_Videos_100_x264.mp4"
+```
+
+3. Multiple Fighting Cameras
+
+```bash
+python3 tools/testing/simulate-camera-feeds.py \
+  tests/data/Videos/FightingA_Part11/Fighting003_x264A.mp4 \
+  tests/data/Videos/FightingA_Part11/Fighting005_x264A.mp4 \
+  tests/data/Videos/FightingA_Part11/Fighting007_x264A.mp4
+```
+
+4. Loop Videos Continuously
+```bash
+python3 tools/testing/simulate-camera-feeds.py --loop \
+  tests/data/Videos/FightingA_Part11/Fighting003_x264A.mp4
+```
+
+5. Slower Playback (15 FPS)
+```bash
+python3 tools/testing/simulate-camera-feeds.py --fps 15 \
+  tests/data/Videos/FightingA_Part11/Fighting003_x264A.mp4
+```
+
 ### Real-World Usage
 
 **Live Camera Feed:**
