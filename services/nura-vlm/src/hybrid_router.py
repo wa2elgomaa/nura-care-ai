@@ -434,6 +434,10 @@ class HybridRouter:
             if context.get("violence", {}).get("violence_detected"):
                 prompt_type = "violence"
                 fast_path_context = {"violence": context["violence"]}
+            elif context.get("temporal", {}).get("violence_detected"):
+                # Temporal detector flagged sustained violence
+                prompt_type = "violence"
+                fast_path_context = {"temporal_violence": context["temporal"]}
             elif context.get("distress", {}).get("distress_detected"):
                 prompt_type = "distress"
                 fast_path_context = {"distress": context["distress"]}
@@ -551,7 +555,7 @@ class HybridRouter:
 
             if verdict:
                 # Successfully parsed JSON - extract confirmation
-                if violation_type == "violence":
+                if violation_type == "violence" or violation_type == "sustained_violence":
                     confirmed = verdict.get("violence_confirmed", False)
                 elif violation_type == "distress":
                     confirmed = verdict.get("distress_confirmed", False)
@@ -571,7 +575,7 @@ class HybridRouter:
         vlm_lower = vlm_result.lower()
 
         # Check for explicit confirmation/rejection (JSON format)
-        if violation_type == "violence":
+        if violation_type == "violence" or violation_type == "sustained_violence":
             if any(x in vlm_lower for x in ["violence_confirmed\": true", "violence_confirmed\":true"]):
                 return True
             if any(x in vlm_lower for x in ["violence_confirmed\": false", "violence_confirmed\":false", "violence_confirmed: no"]):
