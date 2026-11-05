@@ -197,15 +197,19 @@ class PoseBodyLanguageDetector:
         # Final decision
         total_score = intimidation_score + defensive_score + aggressive_score
 
-        # Require BOTH posture indicators AND proximity/interaction
-        # This prevents false positives from kids sitting with hands on face
+        # Multi-detector consensus: Require BOTH posture indicators AND proximity/interaction
+        # Further requires BOTH defensive AND (aggressive OR very close proximity)
+        # This prevents false positives from kids sitting peacefully with hands on face
         has_interaction = intimidation_score > 0.3  # People interacting closely
-        has_posture = (defensive_score > 0.5 or aggressive_score > 0.3)
+        has_very_close_interaction = intimidation_score > 0.5  # Very close/threatening proximity
+        has_defensive = defensive_score > 0.5  # Defensive posture detected
+        has_aggressive = aggressive_score > 0.3  # Aggressive posture detected
 
         intimidation_detected = (
             total_score >= 0.8 and  # Higher threshold
             has_interaction and  # Must have close proximity/contact
-            has_posture  # AND concerning posture
+            has_defensive and  # Must have defensive posture
+            (has_aggressive or has_very_close_interaction)  # AND (aggressive OR very close)
         )
 
         confidence = min(total_score + 0.2, 1.0) if intimidation_detected else 0.9

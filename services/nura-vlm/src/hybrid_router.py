@@ -9,6 +9,7 @@ sys.path.append('/app')  # For Docker imports
 
 import asyncio
 import numpy as np
+import os
 from typing import Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -16,6 +17,17 @@ import logging
 import time
 
 logger = logging.getLogger(__name__)
+
+# Load thresholds from environment variables
+DIRECT_ALERT_VIOLENCE_THRESHOLD = float(os.getenv('DIRECT_ALERT_VIOLENCE_THRESHOLD', '0.65'))
+DIRECT_ALERT_BODY_LANGUAGE_THRESHOLD = float(os.getenv('DIRECT_ALERT_BODY_LANGUAGE_THRESHOLD', '0.70'))
+DIRECT_ALERT_DISTRESS_THRESHOLD = float(os.getenv('DIRECT_ALERT_DISTRESS_THRESHOLD', '0.70'))
+DIRECT_ALERT_SUPERVISION_THRESHOLD = float(os.getenv('DIRECT_ALERT_SUPERVISION_THRESHOLD', '0.80'))
+
+VLM_VALIDATION_MIN_THRESHOLD = float(os.getenv('VLM_VALIDATION_MIN_THRESHOLD', '0.5'))
+VLM_VALIDATION_VIOLENCE_MAX = float(os.getenv('VLM_VALIDATION_VIOLENCE_MAX', '0.9'))
+VLM_VALIDATION_BODY_LANGUAGE_MAX = float(os.getenv('VLM_VALIDATION_BODY_LANGUAGE_MAX', '0.85'))
+VLM_VALIDATION_DISTRESS_MAX = float(os.getenv('VLM_VALIDATION_DISTRESS_MAX', '0.85'))
 
 
 class DetectionSource(Enum):
@@ -68,6 +80,11 @@ class HybridRouter:
         self.supervision_detector = None
         self.body_language_detector = None
         self.pose_detector = None  # ML-based pose detector (Phase 2)
+        self.temporal_detector = None  # Temporal sequence detector (Phase 3)
+
+        # Frame buffer for temporal analysis (per camera)
+        self.frame_buffers = {}  # camera_id -> list of frames
+        self.enable_temporal = os.getenv('ENABLE_TEMPORAL_DETECTION', 'false').lower() == 'true'
 
     def _init_detectors(self):
         """Lazy-load detectors on first use"""
@@ -99,6 +116,26 @@ class HybridRouter:
                 logger.warning(f"Pose detector unavailable: {pose_err}")
                 self.pose_detector = None
 
+            # Try to load temporal sequence detector (Phase 3)
+            if self.enable_temporal:
+                try:
+                    from nura_detectors import TemporalViolenceDetector
+
+                    # Check if we have a trained model
+                    model_path = os.getenv('TEMPORAL_MODEL_PATH', 'models/temporal_violence.h5')
+                    if os.path.exists(model_path):
+                        self.temporal_detector = TemporalViolenceDetector(
+                            sequence_length=int(os.getenv('TEMPORAL_SEQUENCE_LENGTH', '20')),
+                            model_path=model_path
+                        )
+                        logger.info(f"✓ Temporal detector initialized (model: {model_path})")
+                    else:
+                        logger.warning(f"Temporal model not found at {model_path}, temporal detection disabled")
+                        self.temporal_detector = None
+                except (ImportError, Exception) as temp_err:
+                    logger.warning(f"Temporal detector unavailable: {temp_err}")
+                    self.temporal_detector = None
+
             logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose)")
         except (ImportError, Exception) as e:
             logger.warning(f"Fast-path detectors not available: {e}")
@@ -115,7 +152,7 @@ class HybridRouter:
         camera_id: Optional[str] = None
     ) -> ViolationAlert:
         """
-        Analyze frame using hybrid approach
+        Analyze frame using hybrid approach (with optional temporal analysis)
 
         Args:
             frame: Input image (BGR format)
@@ -129,9 +166,29 @@ class HybridRouter:
         # Lazy-init detectors on first use
         self._init_detectors()
 
+        # Step 0: Add frame to temporal buffer (if enabled)
+        temporal_result = None
+        if self.temporal_detector and camera_id:
+            temporal_ready = self.temporal_detector.add_frame(frame)
+            if temporal_ready:
+                temporal_result = self.temporal_detector.detect(ready_for_inference=True)
+                logger.info(f"Temporal analysis: violence_prob={temporal_result.violence_probability:.2f}, "
+                           f"detected={temporal_result.violence_detected}")
+
         # Step 1: Run fast-path detectors (if available)
         if self._fast_path_available():
             fast_path_results = await self._run_fast_path(frame)
+
+            # Incorporate temporal result if available
+            if temporal_result:
+                fast_path_results["temporal"] = {
+                    "violence_detected": temporal_result.violence_detected,
+                    "confidence": temporal_result.confidence,
+                    "probability": temporal_result.violence_probability,
+                    "sequence_length": temporal_result.sequence_length,
+                    "details": temporal_result.details
+                }
+
             decision = self._make_routing_decision(fast_path_results)
 
             # High confidence → Direct alert (no VLM needed)
@@ -247,6 +304,7 @@ class HybridRouter:
     def _make_routing_decision(self, fast_path_results: Dict) -> Dict:
         """
         Decide whether to alert directly, send to VLM, or ignore
+        Now includes temporal detection results if available
 
         Returns:
             {
@@ -259,30 +317,48 @@ class HybridRouter:
         distress = fast_path_results["distress"]
         supervision = fast_path_results["supervision"]
         body_language = fast_path_results["body_language"]
+        temporal = fast_path_results.get("temporal")  # May be None
+
+        # Check temporal detector first (highest priority for sustained violence)
+        if temporal and temporal["violence_detected"]:
+            # Temporal detector found sustained violence over sequence
+            if temporal["probability"] > 0.7:  # High confidence sustained violence
+                return {
+                    "route": "direct_alert",
+                    "confidence": temporal["confidence"],
+                    "primary_violation": "sustained_violence"
+                }
+            elif temporal["probability"] > 0.5:  # Medium confidence, validate with VLM
+                return {
+                    "route": "vlm_validation",
+                    "confidence": temporal["confidence"],
+                    "primary_violation": "sustained_violence"
+                }
 
         # Check for high-confidence violations (direct alert)
-        if violence["violence_detected"] and violence["confidence"] > 0.9:
+        # Thresholds configured via environment variables
+        if violence["violence_detected"] and violence["confidence"] > DIRECT_ALERT_VIOLENCE_THRESHOLD:
             return {
                 "route": "direct_alert",
                 "confidence": violence["confidence"],
                 "primary_violation": "violence"
             }
 
-        if body_language["intimidation_detected"] and body_language["confidence"] > 0.85:
+        if body_language["intimidation_detected"] and body_language["confidence"] > DIRECT_ALERT_BODY_LANGUAGE_THRESHOLD:
             return {
                 "route": "direct_alert",
                 "confidence": body_language["confidence"],
                 "primary_violation": "psychological_bullying"
             }
 
-        if distress["distress_detected"] and distress["confidence"] > 0.85:
+        if distress["distress_detected"] and distress["confidence"] > DIRECT_ALERT_DISTRESS_THRESHOLD:
             return {
                 "route": "direct_alert",
                 "confidence": distress["confidence"],
                 "primary_violation": "distress"
             }
 
-        if supervision["violation_detected"] and supervision["confidence"] > 0.8:
+        if supervision["violation_detected"] and supervision["confidence"] > DIRECT_ALERT_SUPERVISION_THRESHOLD:
             return {
                 "route": "direct_alert",
                 "confidence": supervision["confidence"],
@@ -291,7 +367,7 @@ class HybridRouter:
 
         # Check for medium-confidence violations (VLM validation needed)
         if (violence["violence_detected"] and
-            0.5 < violence["confidence"] <= 0.9):
+            VLM_VALIDATION_MIN_THRESHOLD < violence["confidence"] <= VLM_VALIDATION_VIOLENCE_MAX):
             return {
                 "route": "vlm_validation",
                 "confidence": violence["confidence"],
@@ -299,7 +375,7 @@ class HybridRouter:
             }
 
         if (body_language["intimidation_detected"] and
-            0.5 < body_language["confidence"] <= 0.85):
+            VLM_VALIDATION_MIN_THRESHOLD < body_language["confidence"] <= VLM_VALIDATION_BODY_LANGUAGE_MAX):
             return {
                 "route": "vlm_validation",
                 "confidence": body_language["confidence"],
@@ -307,7 +383,7 @@ class HybridRouter:
             }
 
         if (distress["distress_detected"] and
-            0.5 < distress["confidence"] <= 0.85):
+            VLM_VALIDATION_MIN_THRESHOLD < distress["confidence"] <= VLM_VALIDATION_DISTRESS_MAX):
             return {
                 "route": "vlm_validation",
                 "confidence": distress["confidence"],
@@ -419,6 +495,24 @@ class HybridRouter:
         """Create alert from hybrid detection (fast-path + VLM)"""
         violation_type = decision["primary_violation"]
 
+        # Parse VLM verdict to check if it confirmed or rejected the fast-path detection
+        vlm_confirmed = self._parse_vlm_verdict(vlm_result, violation_type)
+
+        # If VLM says no violation, trust it over fast-path
+        if not vlm_confirmed:
+            return ViolationAlert(
+                violation_detected=False,
+                violation_type="none",
+                severity="low",
+                confidence=0.1,
+                source=DetectionSource.HYBRID.value,
+                details=f"Fast-path detected {violation_type}, but VLM rejected it as false positive",
+                fast_path_results=fast_path_results,
+                vlm_result=vlm_result,
+                immediate_action_required=False
+            )
+
+        # VLM confirmed the violation
         return ViolationAlert(
             violation_detected=True,
             violation_type=violation_type,
@@ -430,3 +524,71 @@ class HybridRouter:
             vlm_result=vlm_result,
             immediate_action_required=False  # VLM validation means not immediate
         )
+
+    def _parse_vlm_verdict(self, vlm_result: str, violation_type: str) -> bool:
+        """
+        Parse VLM verdict from JSON to determine if it confirmed the violation
+
+        Returns:
+            True if VLM confirmed, False if VLM rejected
+        """
+        import json
+        import re
+
+        # Try to extract JSON from markdown code fence or raw JSON
+        try:
+            # Look for JSON in markdown code fence first
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', vlm_result, re.DOTALL)
+            if json_match:
+                verdict = json.loads(json_match.group(1))
+            else:
+                # Try to find raw JSON object
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', vlm_result, re.DOTALL)
+                if json_match:
+                    verdict = json.loads(json_match.group(0))
+                else:
+                    verdict = None
+
+            if verdict:
+                # Successfully parsed JSON - extract confirmation
+                if violation_type == "violence":
+                    confirmed = verdict.get("violence_confirmed", False)
+                elif violation_type == "distress":
+                    confirmed = verdict.get("distress_confirmed", False)
+                else:
+                    # Fallback to fast_path_correct
+                    confirmed = verdict.get("fast_path_correct", True)
+
+                # Log the parsed verdict
+                logger.info(f"VLM JSON verdict parsed: {json.dumps(verdict, indent=2)}")
+                logger.info(f"Violation type '{violation_type}' confirmed: {confirmed}")
+                return bool(confirmed)
+
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.warning(f"Failed to parse VLM JSON response, falling back to text parsing: {e}")
+
+        # Fallback to text-based parsing (for old format responses)
+        vlm_lower = vlm_result.lower()
+
+        # Check for explicit confirmation/rejection (JSON format)
+        if violation_type == "violence":
+            if any(x in vlm_lower for x in ["violence_confirmed\": true", "violence_confirmed\":true"]):
+                return True
+            if any(x in vlm_lower for x in ["violence_confirmed\": false", "violence_confirmed\":false", "violence_confirmed: no"]):
+                return False
+
+        elif violation_type == "distress":
+            if any(x in vlm_lower for x in ["distress_confirmed\": true", "distress_confirmed\":true"]):
+                return True
+            if any(x in vlm_lower for x in ["distress_confirmed\": false", "distress_confirmed\":false", "distress_confirmed: no"]):
+                return False
+
+        # Check fast_path_correct (both JSON and old text format)
+        if any(x in vlm_lower for x in ["fast_path_correct\": false", "fast_path_correct\":false", "fast_path_correct: no"]):
+            return False
+        if any(x in vlm_lower for x in ["fast_path_correct\": true", "fast_path_correct\":true", "fast_path_correct: yes"]):
+            return True
+
+        # Default: assume VLM confirmed (conservative - alert if unsure)
+        logger.warning(f"Could not parse VLM verdict for {violation_type}, defaulting to confirmed")
+        return True

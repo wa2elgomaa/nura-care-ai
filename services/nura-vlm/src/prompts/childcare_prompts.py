@@ -80,6 +80,12 @@ YOUR JOB: Validate or reject this detection with careful analysis.
    - Child's head tilted/pulled
    - Victim showing distress
 
+5. PSYCHOLOGICAL BULLYING/INTIMIDATION:
+   - One child in defensive posture (hands over face, backing away, cowering)
+   - Another child invading space, pointing, or in aggressive stance
+   - Victim showing fear/distress without physical contact
+   - Power imbalance visible (one dominant, one submissive)
+
 ==== EXAMPLES OF NORMAL PLAY (REJECT false positives) ====
 
 1. COOPERATIVE PLAY:
@@ -117,15 +123,20 @@ Look at the area around {bbox_description}.
    - Are other children reacting?
    - Is this isolated or ongoing?
 
-VERDICT:
-- VIOLENCE_CONFIRMED: Yes/No
-- TYPE: hitting | pushing | throwing | hair_pulling | none
-- SEVERITY: LOW | MEDIUM | HIGH | NONE
-- CONFIDENCE: 0.0-1.0
-- EVIDENCE: [Specific observable facts]
-- FAST_PATH_CORRECT: Yes/No
+IMPORTANT: Return your verdict as valid JSON in this exact format:
 
-Be precise. The fast-path detector may be wrong - validate independently."""
+```json
+{{
+  "violence_confirmed": true/false,
+  "type": "hitting" | "pushing" | "throwing" | "hair_pulling" | "intimidation" | "none",
+  "severity": "LOW" | "MEDIUM" | "HIGH" | "NONE",
+  "confidence": 0.0-1.0,
+  "evidence": "Specific observable facts here",
+  "fast_path_correct": true/false
+}}
+```
+
+Be precise. The fast-path detector may be wrong - validate independently. Return ONLY the JSON object."""
 
 
 # Distress-specific prompt with context
@@ -208,16 +219,21 @@ Look at the face area around {face_bbox_description}.
    - Can wait for next check-in?
    - Normal emotional expression?
 
-VERDICT:
-- DISTRESS_CONFIRMED: Yes/No
-- TYPE: crying | fear | pain | sadness | frustration | none
-- SEVERITY: LOW | MEDIUM | HIGH | NONE
-- IMMEDIATE_ATTENTION: Yes/No
-- CONFIDENCE: 0.0-1.0
-- EVIDENCE: [Specific observable facts]
-- FAST_PATH_CORRECT: Yes/No
+IMPORTANT: Return your verdict as valid JSON in this exact format:
 
-Remember: temporary upset (mild frustration, brief sadness) is normal. Only flag sustained distress or acute pain/fear."""
+```json
+{{
+  "distress_confirmed": true/false,
+  "type": "crying" | "fear" | "pain" | "sadness" | "frustration" | "none",
+  "severity": "LOW" | "MEDIUM" | "HIGH" | "NONE",
+  "immediate_attention": true/false,
+  "confidence": 0.0-1.0,
+  "evidence": "Specific observable facts here",
+  "fast_path_correct": true/false
+}}
+```
+
+Remember: temporary upset (mild frustration, brief sadness) is normal. Only flag sustained distress or acute pain/fear. Return ONLY the JSON object."""
 
 
 # Supervision-specific prompt

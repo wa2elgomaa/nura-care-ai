@@ -12,7 +12,10 @@ import logging
 import base64
 import time
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageFile
+
+# Allow loading of truncated images
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # Import VLM client
 from src.vlm_client import OllamaVLMClient, PROMPT_TEMPLATES

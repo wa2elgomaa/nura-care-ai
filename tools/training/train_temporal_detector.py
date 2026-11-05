@@ -96,8 +96,8 @@ def prepare_dataset(violent_dir, normal_dir, sequence_length=20, max_videos_per_
     X_sequences = []
     y_labels = []
 
-    # Process violent videos
-    violent_videos = list(Path(violent_dir).glob("*.mp4"))[:max_videos_per_class]
+    # Process violent videos (search recursively for *.mp4 in subdirectories)
+    violent_videos = list(Path(violent_dir).rglob("*.mp4"))[:max_videos_per_class]
     print(f"\n🔴 Processing {len(violent_videos)} violent videos...")
 
     for video_path in tqdm(violent_videos, desc="Violent"):
@@ -116,8 +116,8 @@ def prepare_dataset(violent_dir, normal_dir, sequence_length=20, max_videos_per_
             X_sequences.append(sequence)
             y_labels.append(1)  # Violent = 1
 
-    # Process normal videos
-    normal_videos = list(Path(normal_dir).glob("*.mp4"))[:max_videos_per_class]
+    # Process normal videos (search recursively for *.mp4 in subdirectories)
+    normal_videos = list(Path(normal_dir).rglob("*.mp4"))[:max_videos_per_class]
     print(f"\n🟢 Processing {len(normal_videos)} normal videos...")
 
     for video_path in tqdm(normal_videos, desc="Normal"):

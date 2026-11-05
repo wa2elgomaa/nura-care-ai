@@ -1,106 +1,168 @@
-# Nura Hybrid Fast-Path System - Quick Start
+# NURA Childcare AI - Quick Start Guide
 
-## ✅ Current Status
+## 🎯 Overview
 
-**System:** ✅ Fully operational with body language detection  
-**Speed:** 116ms - 15s (vs 11-21 seconds VLM-only) = **1-150x faster**  
-**Detection:** ✅ **100% accuracy** on test images (2/2 violations detected)
+NURA is a hybrid AI system for childcare safety monitoring combining:
+- ⚡ **Fast-path detectors** (~500ms) - Violence, distress, supervision, body language  
+- 🧠 **VLM validation** (qwen3-vl:8b-instruct) - Validates ambiguous cases  
+- 🎯 **Multi-detector consensus** - Reduces false positives  
+- 📊 **Structured JSON output** - Reliable parsing and processing
 
-### Recent Breakthrough (Nov 4, 2026)
-- ✅ Body language detector integrated
-- ✅ Psychological bullying detection working
-- ✅ test_classroom2.jpg: **Detected** (72% confidence, 15s hybrid)
-- ✅ test_violence.jpg: **Detected** (100% confidence, 116ms fast-path!)
+**Speed:** 50-500ms fast-path | ~20-30s VLM validation (when needed)  
+**Detection:** ✓ Violence, distress, intimidation, supervision violations
 
 ---
 
-## 🚀 Quick Start - Test the System
+## 🚀 Quick Start
 
-### Start Services
+### Option 1: Local Development (Recommended)
+
+**Best for:** Development, testing, Mac M-series (uses Metal GPU directly)
+
 ```bash
-cd "/Users/wgomaa/Work/PixelPlusOne/Nura Childcare AI/nura-care-source"
+# One-command startup (auto-installs everything)
+./start.sh
 
-# Start all services
+# Test the system
+./test-images.sh
+
+# Stop services
+./stop.sh
+```
+
+That's it! No manual configuration needed.
+
+### Option 2: Full Docker (Production)
+
+**Best for:** Production deployment, CI/CD, cloud environments
+
+```bash
+# Start all services in Docker
 docker compose -f compose.yaml -f compose.mac.yaml up -d
 
-# Verify services are running
-docker ps | grep -E "vlm|ollama"
-curl http://localhost:8001/health
-```
+# Check status
+docker ps
 
-### Test with Sample Images
+# View logs
+docker compose logs -f nura-vlm
 
-**Option 1: Quick Single Image Test** (Recommended)
-```bash
-# Test psychological bullying detection
-python3 tools/testing/quick_hybrid_test.py tests/images/test_classroom2.jpg
-
-# Test violence/intimidation detection  
-python3 tools/testing/quick_hybrid_test.py tests/images/test_violence.jpg
-```
-
-**Option 2: Full VLM vs Hybrid Comparison**
-```bash
-# Compare performance and accuracy
-python3 tools/testing/test_hybrid_system.py
-
-# Results saved to test_results/hybrid_comparison_*.json
-```
-
-**Option 3: Direct API Call**
-```bash
-# Encode image
-IMAGE_B64=$(base64 -i tests/images/test_violence.jpg)
-
-# Call hybrid endpoint
-curl -X POST http://localhost:8001/analyze/hybrid \
-  -H "Content-Type: application/json" \
-  -d "{\"image_base64\":\"$IMAGE_B64\"}" | jq
+# Stop services
+docker compose down
 ```
 
 ---
 
-## 📊 Expected Results
+## 📋 Prerequisites
 
-### test_violence.jpg (High Confidence - Fast Path)
+### Local Development
+- macOS with M-series chip (M1, M2, M3, M4)
+- Homebrew installed
+- **That's it!** `start.sh` auto-installs everything else
+
+### Docker
+- Docker & Docker Compose
+- 16GB+ RAM recommended
+
+---
+
+## ✅ What `start.sh` Does
+
+The startup script is **fully automated** for non-technical users:
+
+1. ✅ **Checks/starts Ollama** (VLM backend)
+   - Auto-detects if running on port 11434
+   - Starts if needed
+2. ✅ **Verifies VLM models**
+   - Checks for qwen3-vl:8b-instruct
+   - Prompts to pull if missing
+3. ✅ **Creates Python environment**
+   - Detects Python 3.11
+   - Creates virtual environment
+   - Installs all dependencies
+4. ✅ **Starts VLM service**
+   - Launches on port 8001
+   - Health checks
+   - Saves PID for clean shutdown
+
+**No manual intervention required!**
+
+---
+
+## 🧪 Testing
+
+### Automated Test Suite
+```bash
+# Test all images (recommended)
+./test-images.sh
 ```
-🎯 Detection:
-   Violation: True
-   Type: psychological_bullying
-   Severity: medium
-   Confidence: 100.0%
 
-⚡ Performance:
-   Processing Time: 116ms
-   Source: fast_path
-   Immediate Action: False
+**Expected results:**
+- `test_classroom1.jpg` (peaceful) → ✓ NO VIOLATION
+- `test_classroom2.jpg` (confrontation) → ⚠️ VIOLATION DETECTED  
+- `test_violence.jpg` (violence) → ⚠️ VIOLATION DETECTED
 
-📝 Details:
-   Personal space violation: 142px | Person backed against wall/edge | 
-   Height imbalance: 206px vs 128px | Intimidation score: 2.10
+### Manual API Testing
+```bash
+# Health check
+curl http://localhost:8001/health
 
-🔬 Fast-Path Detectors:
-   Violence: ✗ Not detected
-   Distress: ✗ Not detected
-   Supervision Violation: ✗ Not detected
-   Intimidation/Bullying: ✓ DETECTED
+# Test single image
+IMAGE_B64=$(base64 -i tests/images/test_classroom1.jpg)
+curl -X POST http://localhost:8001/analyze/hybrid \
+  -H "Content-Type: application/json" \
+  -d "{\"image_base64\":\"$IMAGE_B64\",\"camera_id\":\"test\"}" \
+  | jq
 ```
 
-### test_classroom2.jpg (Medium Confidence - Hybrid with VLM)
-```
-🎯 Detection:
-   Violation: True
-   Type: psychological_bullying
-   Severity: medium
-   Confidence: 72.0%
+---
 
-⚡ Performance:
-   Processing Time: 15267ms
-   Source: hybrid (fast-path + VLM validation)
+## 📊 API Response Format
 
-🔬 Fast-Path Detectors:
-   Intimidation/Bullying: ✓ DETECTED
+All responses now return **structured JSON** for reliable parsing:
+
+```json
+{
+  "violation_detected": false,
+  "violation_type": "none",
+  "severity": "low",
+  "confidence": 0.1,
+  "source": "hybrid",
+  "processing_time_ms": 28703,
+  "immediate_action_required": false,
+  "details": "Fast-path detected distress, but VLM rejected it as false positive",
+  "fast_path_results": {
+    "violence_detected": false,
+    "distress_detected": true,
+    "supervision_violation": false,
+    "intimidation_detected": false
+  },
+  "vlm_result": {
+    "distress_confirmed": false,
+    "type": "none",
+    "severity": "NONE",
+    "confidence": 0.15,
+    "evidence": "Children sitting peacefully at desks, no signs of distress",
+    "fast_path_correct": false
+  }
+}
 ```
+
+### VLM Structured Output
+
+VLM now returns **validated JSON** instead of free text:
+
+```json
+{
+  "violence_confirmed": true,
+  "type": "intimidation",
+  "severity": "MEDIUM",
+  "confidence": 0.75,
+  "evidence": "One child in defensive posture, another invading space",
+  "fast_path_correct": true
+}
+```
+
+This ensures reliable parsing and eliminates ambiguity.
 
 ---
 
@@ -161,6 +223,73 @@ curl -X POST http://localhost:8001/analyze/hybrid \
 - Power imbalances
 - Personal space violations
 - Cornering behavior
+
+---
+
+## ⚙️ Configuration
+
+All detection thresholds and behavior can be customized via environment variables in `.env`:
+
+### Quick Configuration
+
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit values
+nano .env  # or your favorite editor
+```
+
+### Key Configuration Options
+
+**VLM Model Selection**
+```bash
+# Options: llava:13b (default), llava:7b, qwen3-vl:8b-instruct
+VLM_MODEL=llava:13b
+```
+
+**Detection Sensitivity**
+```bash
+# Body Language Detector (higher = fewer false positives)
+BODY_LANGUAGE_SCORE_THRESHOLD_LOW=2.5    # Default: 2.5
+BODY_LANGUAGE_SCORE_THRESHOLD_HIGH=3.0   # Default: 3.0
+```
+
+**Fast-Path vs VLM Routing**
+```bash
+# Direct alert thresholds (lower = more fast-path alerts, faster response)
+DIRECT_ALERT_VIOLENCE_THRESHOLD=0.65     # Default: 0.65
+DIRECT_ALERT_BODY_LANGUAGE_THRESHOLD=0.70  # Default: 0.70
+
+# VLM validation range (between min and max triggers VLM review)
+VLM_VALIDATION_MIN_THRESHOLD=0.5         # Default: 0.5
+VLM_VALIDATION_VIOLENCE_MAX=0.9          # Default: 0.9
+```
+
+### Tuning Guidelines
+
+**To reduce false positives:**
+- Increase `BODY_LANGUAGE_SCORE_THRESHOLD_LOW` (try 3.0+)
+- Increase `DIRECT_ALERT_*_THRESHOLD` values
+- This makes detectors more conservative
+
+**To catch more violations:**
+- Decrease `BODY_LANGUAGE_SCORE_THRESHOLD_LOW` (try 2.0)
+- Decrease `DIRECT_ALERT_*_THRESHOLD` values (try 0.55)
+- This makes detectors more sensitive
+
+**To use more VLM validation:**
+- Increase `DIRECT_ALERT_*_THRESHOLD` values (more goes to VLM)
+- Slower but more accurate
+
+**To use more fast-path:**
+- Decrease `DIRECT_ALERT_*_THRESHOLD` values (more direct alerts)
+- Faster but relies on detector accuracy
+
+After changing `.env`, restart the service:
+```bash
+./stop.sh && ./start.sh
+```
 
 ---
 
@@ -689,3 +818,153 @@ python3 tools/testing/quick_hybrid_test.py tests/images/test_violence.jpg
 ```
 
 Expected result: ✅ Detection in **~116ms** with **100% confidence**!
+
+---
+
+## 🎥 Video Analysis
+
+Analyze video files frame-by-frame with the hybrid detection system.
+
+### Quick Start
+
+```bash
+# Analyze video (samples every 1 second)
+python3 tools/testing/analyze-video.py tests/videos/classroom_1.mp4
+
+# Save detailed results to JSON
+python3 tools/testing/analyze-video.py tests/videos/classroom_1.mp4 test-results/classroom_1_analysis.json
+```
+
+### How It Works
+
+1. **Frame Sampling** - Analyzes every 30th frame (~1 second intervals at 30fps)
+2. **Hybrid Detection** - Uses the same fast-path + VLM system
+3. **Real-time Progress** - Shows violations as they're detected
+4. **JSON Output** - Saves detailed results with timestamps
+
+### Performance
+
+- **Fast-path frames**: ~85-100ms per frame
+- **VLM validation frames**: ~20-30s per frame
+- **47-second video**: ~4 seconds analysis time (fast-path only)
+- **Typical ratio**: 70% fast-path, 30% VLM validation
+
+### Example Output
+
+```
+Video Analysis: classroom_video.mp4
+======================================================================
+
+Video Properties:
+  Duration: 0:00:47
+  Total Frames: 1434
+  FPS: 30.00
+  Resolution: 320x240
+  Sampling Rate: Every 30 frames (~1.0s)
+
+Will analyze ~47 frames
+
+Starting analysis...
+
+[  2.1%] Frame 30/1434 (0:00:01)... 85ms OK
+[  4.2%] Frame 60/1434 (0:00:02)... 86ms VIOLATION
+
+⚠️  VIOLATION DETECTED
+  Frame: 60
+  Timestamp: 0:00:02
+  Type: psychological_bullying
+  Severity: medium
+  Confidence: 100%
+  Source: fast_path
+  Details: Person cornered, defensive posture detected
+
+...
+
+Analysis Complete
+======================================================================
+Frames Analyzed: 47/47
+Violations Found: 8
+Total Time: 0:00:04
+Avg Time/Frame: 0.09s
+
+Violation Summary:
+  0:00:02 - psychological_bullying (100%)
+  0:00:13 - psychological_bullying (100%)
+  0:00:14 - psychological_bullying (100%)
+  0:00:15 - psychological_bullying (100%)
+  0:00:21 - psychological_bullying (100%)
+  0:00:29 - psychological_bullying (100%)
+  0:00:32 - psychological_bullying (100%)
+  0:00:38 - supervision (100%)
+```
+
+### Configuration
+
+Adjust sampling rate in `analyze-video.py`:
+
+```python
+FRAME_SAMPLE_RATE = 30  # Every 30 frames = ~1s at 30fps
+FRAME_SAMPLE_RATE = 15  # Every 15 frames = ~0.5s (more sensitive, slower)
+FRAME_SAMPLE_RATE = 60  # Every 60 frames = ~2s (faster, may miss events)
+```
+
+### JSON Output Format
+
+```json
+{
+  "video_path": "classroom.mp4",
+  "analyzed_at": "2026-11-05T12:30:00",
+  "video_properties": {
+    "duration_seconds": 47.8,
+    "total_frames": 1434,
+    "fps": 30.0,
+    "resolution": "320x240"
+  },
+  "analysis_settings": {
+    "frame_sample_rate": 30,
+    "frames_analyzed": 47
+  },
+  "summary": {
+    "violations_found": 8,
+    "elapsed_seconds": 4.2
+  },
+  "violations": [
+    {
+      "frame": 60,
+      "timestamp": "0:00:02",
+      "result": {
+        "violation_detected": true,
+        "violation_type": "psychological_bullying",
+        "confidence": 1.0,
+        "source": "fast_path",
+        "details": "Person cornered, defensive posture"
+      }
+    }
+  ]
+}
+```
+
+### Real-World Usage
+
+**Live Camera Feed:**
+```python
+# Process RTSP stream
+cap = cv2.VideoCapture('rtsp://camera-ip/stream')
+# Use same hybrid analysis API
+```
+
+**Batch Processing:**
+```bash
+# Analyze all videos in directory
+for video in classroom_videos/*.mp4; do
+    python3 analyze-video.py "$video" "results/$(basename $video .mp4).json"
+done
+```
+
+**Alert Integration:**
+```python
+# In analyze-video.py, add webhook on violation
+if result['violation_detected']:
+    requests.post('https://alert-system/webhook', json=result)
+```
+

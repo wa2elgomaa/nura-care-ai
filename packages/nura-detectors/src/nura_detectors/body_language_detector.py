@@ -7,11 +7,18 @@ but clear intimidation through posture and spatial dynamics.
 """
 import cv2
 import numpy as np
+import os
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Load thresholds from environment variables
+BODY_LANGUAGE_SCORE_THRESHOLD_LOW = float(os.getenv('BODY_LANGUAGE_SCORE_THRESHOLD_LOW', '2.5'))
+BODY_LANGUAGE_SCORE_THRESHOLD_HIGH = float(os.getenv('BODY_LANGUAGE_SCORE_THRESHOLD_HIGH', '3.0'))
+BODY_LANGUAGE_INDICATOR_COUNT_LOW = int(os.getenv('BODY_LANGUAGE_INDICATOR_COUNT_LOW', '2'))
+BODY_LANGUAGE_INDICATOR_COUNT_HIGH = int(os.getenv('BODY_LANGUAGE_INDICATOR_COUNT_HIGH', '3'))
 
 
 @dataclass
@@ -151,9 +158,25 @@ class BodyLanguageDetector:
 
         # Final decision: Require MULTIPLE indicators (not just a score)
         # AND a minimum score to ensure there's actual concerning behavior
-        # indicator_count >= 2 prevents false positives from single ambiguous signals
-        intimidation_detected = (intimidation_score >= 0.4 and indicator_count >= 2)
-        confidence = min(intimidation_score + 0.2, 1.0) if intimidation_detected else 0.9
+        # Multi-detector consensus: Thresholds configured via environment variables
+        # Kids sitting close at desks should NOT trigger (score ~2.0 is common in classrooms)
+        intimidation_detected = (
+            (intimidation_score >= BODY_LANGUAGE_SCORE_THRESHOLD_LOW and
+             indicator_count >= BODY_LANGUAGE_INDICATOR_COUNT_LOW) or
+            (intimidation_score >= BODY_LANGUAGE_SCORE_THRESHOLD_HIGH and
+             indicator_count >= BODY_LANGUAGE_INDICATOR_COUNT_HIGH)
+        )
+
+        # HOG is heuristic-based, so cap confidence at 0.85 to trigger VLM validation
+        # This ensures ambiguous cases get VLM review
+        if intimidation_detected:
+            # Map score to confidence: threshold_low->0.65, threshold_high->0.75, threshold_high+0.5->0.85
+            confidence = min(
+                0.65 + (intimidation_score - BODY_LANGUAGE_SCORE_THRESHOLD_LOW) * 0.20,
+                0.85
+            )
+        else:
+            confidence = 0.3  # Low confidence when no violation detected
 
         if intimidation_detected:
             details.append(f"Intimidation score: {intimidation_score:.2f}")

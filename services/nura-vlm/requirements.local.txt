@@ -1,0 +1,30 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.6.0
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+
+# Vision-Language Models
+ollama==0.1.6
+
+# Image processing
+Pillow==10.2.0
+numpy==1.26.3
+opencv-python-headless==4.9.0.80
+
+# Deep Learning (for temporal detector)
+tensorflow==2.15.0
+
+# HTTP client
+httpx>=0.25.2,<0.26.0
+aiohttp==3.9.1
+
+# NATS for event publishing
+nats-py==2.6.0
+
+# Monitoring
+prometheus-client==0.19.0
+
+# Shared detectors package (local path)
+-e ../../packages/nura-detectors
