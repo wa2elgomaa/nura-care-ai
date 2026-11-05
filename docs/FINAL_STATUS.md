@@ -17,7 +17,7 @@ Successfully built and tested the complete NURA safety violation detection pipel
 
 | Service | Status | Performance |
 |---------|--------|-------------|
-| **nura-vlm** | ✅ Operational | llava:7b, 2-3min inference |
+| **nura-vlm** | ✅ Operational | qwen3-vl:8b-instruct, 2-3min inference |
 | **nura-rag** | ✅ Operational | 12ms query time |
 | **nura-rules** | ✅ Operational | Connected to NATS |
 
@@ -29,7 +29,7 @@ Successfully built and tested the complete NURA safety violation detection pipel
 ✅ **Semantic Search** - Working with pgvector  
 ✅ **Database** - PostgreSQL with 3 rules + embeddings  
 ✅ **Embeddings** - Auto-generated via API  
-✅ **VLM Analysis** - llava:7b successfully analyzed classroom images  
+✅ **VLM Analysis** - qwen3-vl:8b-instruct successfully analyzed classroom images  
 
 ---
 

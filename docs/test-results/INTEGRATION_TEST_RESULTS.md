@@ -215,7 +215,7 @@ Tests stopped after VLM test. Remaining tests:
 1. **Pull LLaVA model**: Enable VLM scene analysis
    ```bash
    # From host with internet access
-   docker run --rm --network bridge ollama/ollama pull llava:7b
+   docker run --rm --network bridge ollama/ollama pull qwen3-vl:8b-instruct
    # Copy model to nura-ollama volume
    ```
 

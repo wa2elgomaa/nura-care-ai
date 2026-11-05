@@ -6,6 +6,8 @@ from .violence_detector import ViolenceDetector, ViolenceDetection
 from .distress_detector import DistressDetector, DistressDetection
 from .supervision_detector import SupervisionDetector, SupervisionDetection
 from .body_language_detector import BodyLanguageDetector, BodyLanguageDetection
+from .pose_detector import PoseBodyLanguageDetector, PoseDetection
+from .temporal_detector import TemporalViolenceDetector, TemporalDetection
 
 __all__ = [
     "ViolenceDetector",
@@ -16,4 +18,8 @@ __all__ = [
     "SupervisionDetection",
     "BodyLanguageDetector",
     "BodyLanguageDetection",
+    "PoseBodyLanguageDetector",
+    "PoseDetection",
+    "TemporalViolenceDetector",
+    "TemporalDetection",
 ]

@@ -34,7 +34,7 @@ ollama pull llava:13b
 
 **Option B: LLaVA 7B** (Medium quality, 16GB VRAM)
 ```bash
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 ```
 
 **Option C: Moondream 2B** (Lightweight, 8GB VRAM, fastest)
@@ -74,7 +74,7 @@ pip install -r requirements.txt
 ```bash
 # Set environment variables
 export OLLAMA_URL=http://localhost:11434
-export VLM_MODEL=llava:13b  # or llava:7b or moondream
+export VLM_MODEL=llava:13b  # or qwen3-vl:8b-instruct or moondream
 
 # Run service
 uvicorn src.main:app --reload --port 8001
@@ -137,7 +137,7 @@ curl -X POST http://localhost:8001/analyze \
 ### 1. Update .env File
 ```bash
 # Add to .env
-VLM_MODEL=llava:13b  # or llava:7b or moondream
+VLM_MODEL=llava:13b  # or qwen3-vl:8b-instruct or moondream
 VLM_TEMPERATURE=0.3
 VLM_MAX_TOKENS=500
 ```
@@ -331,7 +331,7 @@ docker compose restart nura-vlm
 ```bash
 # Ollama using too much VRAM
 # Switch to smaller model
-docker compose exec ollama ollama pull llava:7b
+docker compose exec ollama ollama pull qwen3-vl:8b-instruct
 # Update VLM_MODEL in .env
 ```
 

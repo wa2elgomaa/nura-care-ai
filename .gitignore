@@ -84,4 +84,13 @@ edge/frigate/*.db-wal
 edge/frigate/go2rtc_homekit.yml
 
 test_results/
+
+# ML Models (too large for git, download separately)
+# YOLOv8: Auto-downloads on first use
+# Temporal RNN: Train with tools/training/train_temporal_detector.py
+# VLM: Pull via Ollama (ollama pull qwen3-vl:8b-instruct)
 models/
+*.pt
+*.h5
+*.onnx
+*.tflite

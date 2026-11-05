@@ -24,7 +24,7 @@ services:
       dockerfile: ./services/nura-vlm/Dockerfile.mac
     environment:
       OLLAMA_URL: http://host.docker.internal:11434  # Native Ollama on Mac
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -51,7 +51,7 @@ services:
     restart: unless-stopped
     environment:
       OLLAMA_URL: http://host.docker.internal:11434
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -73,7 +73,7 @@ services:
     restart: unless-stopped
     environment:
       OLLAMA_URL: http://host.docker.internal:11434
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -95,7 +95,7 @@ services:
     restart: unless-stopped
     environment:
       OLLAMA_URL: http://host.docker.internal:11434
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -150,7 +150,7 @@ services:
   # Native Ollama Setup (REQUIRED):
   #   brew install ollama
   #   ollama serve
-  #   ollama pull llava:7b
+  #   ollama pull qwen3-vl:8b-instruct
   # Benefits:
   #   - Direct Metal GPU access (no virtualization overhead)
   #   - Full 128GB RAM available
@@ -192,7 +192,7 @@ services:
 # Setup Instructions:
 # 1. Install native Ollama: brew install ollama
 # 2. Start Ollama: ollama serve
-# 3. Pull model: ollama pull llava:7b
+# 3. Pull model: ollama pull qwen3-vl:8b-instruct
 # 4. Start services: docker compose -f compose.yaml -f compose.mac.yaml --env-file .env --profile ai --profile app up -d
 # 5. For parallel VLM: add --profile vlm-parallel
 #

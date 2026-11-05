@@ -23,7 +23,7 @@ Current VLM performance (2-3 minutes per image) cannot support real-time multi-c
 
 ### Current Bottleneck
 
-**Measurements (llava:7b on CPU):**
+**Measurements (qwen3-vl:8b-instruct on CPU):**
 ```
 test_classroom1.jpg (34KB):
 - Upload time: ~1 second

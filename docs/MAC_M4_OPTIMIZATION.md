@@ -43,8 +43,8 @@ Parlor developer achieved on **M3 Pro** (weaker than your M4 Max):
 
 | Model | Size | Latency | Throughput | Recommendation |
 |-------|------|---------|------------|----------------|
-| **llava:7b (Q4_K_M)** | 4GB | **0.5-1.0s** | 1-2 fps | **BEST** |
-| **llava:7b (Q8)** | 7GB | 0.8-1.5s | 0.7-1.3 fps | High quality |
+| **qwen3-vl:8b-instruct (Q4_K_M)** | 4GB | **0.5-1.0s** | 1-2 fps | **BEST** |
+| **qwen3-vl:8b-instruct (Q8)** | 7GB | 0.8-1.5s | 0.7-1.3 fps | High quality |
 | **llava:13b (Q4_K_M)** | 8GB | 1.0-2.0s | 0.5-1 fps | Better accuracy |
 | **llava:34b (Q4_K_M)** | 19GB | 2.0-4.0s | 0.25-0.5 fps | Maximum quality |
 | **Gemma 4E2B** | 4GB | **0.7-1.0s** | 1-1.4 fps | Parlor's choice |
@@ -250,7 +250,7 @@ mlx_lm.convert --hf-path liuhaotian/llava-v1.6-mistral-7b \
     --quantize
 
 # Or use GGUF with Metal
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 ```
 
 **Day 3-4: Benchmark Performance**

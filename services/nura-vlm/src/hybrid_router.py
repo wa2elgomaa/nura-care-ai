@@ -67,6 +67,7 @@ class HybridRouter:
         self.distress_detector = None
         self.supervision_detector = None
         self.body_language_detector = None
+        self.pose_detector = None  # ML-based pose detector (Phase 2)
 
     def _init_detectors(self):
         """Lazy-load detectors on first use"""
@@ -81,7 +82,8 @@ class HybridRouter:
                 ViolenceDetector,
                 DistressDetector,
                 SupervisionDetector,
-                BodyLanguageDetector
+                BodyLanguageDetector,
+                PoseBodyLanguageDetector
             )
 
             self.violence_detector = ViolenceDetector()
@@ -89,7 +91,15 @@ class HybridRouter:
             self.supervision_detector = SupervisionDetector()
             self.body_language_detector = BodyLanguageDetector()
 
-            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language)")
+            # Try to load ML-based pose detector (Phase 2)
+            try:
+                self.pose_detector = PoseBodyLanguageDetector(model_size='n')  # nano = fastest
+                logger.info("✓ ML pose detector initialized (YOLOv8-pose)")
+            except Exception as pose_err:
+                logger.warning(f"Pose detector unavailable: {pose_err}")
+                self.pose_detector = None
+
+            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose)")
         except (ImportError, Exception) as e:
             logger.warning(f"Fast-path detectors not available: {e}")
             logger.warning("Will fall back to VLM-only mode")
@@ -97,6 +107,7 @@ class HybridRouter:
             self.distress_detector = None
             self.supervision_detector = None
             self.body_language_detector = None
+            self.pose_detector = None
 
     async def analyze_frame(
         self,
@@ -210,7 +221,12 @@ class HybridRouter:
         violence_result = self.violence_detector.detect(frame)
         distress_result = self.distress_detector.detect(frame)
         supervision_result = self.supervision_detector.detect(frame)
-        body_language_result = self.body_language_detector.detect(frame)
+
+        # Prefer ML pose detector if available, fallback to heuristic
+        if self.pose_detector is not None:
+            body_language_result = self.pose_detector.detect(frame)
+        else:
+            body_language_result = self.body_language_detector.detect(frame)
 
         # Log detector scores for debugging
         logger.info(

@@ -198,7 +198,7 @@ docker compose exec postgres psql -U nura -d nura -c "SELECT * FROM rules;"
 # Check Ollama has model
 docker compose exec ollama ollama list
 
-# Should show: llava:13b (or llava:7b or moondream)
+# Should show: llava:13b (or qwen3-vl:8b-instruct or moondream)
 
 # If missing, pull model
 docker compose exec ollama ollama pull llava:13b

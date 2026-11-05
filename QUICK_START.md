@@ -370,20 +370,259 @@ nura-care-source/
 
 ---
 
+## 🚀 Phase 3: ML Temporal Detection (Implemented)
+
+### Architecture: ResNet50 + RNN/GRU
+
+**Goal:** Achieve 78-93% accuracy using sequence-based violence detection
+
+```
+Frame Sequence (20 frames)
+    │
+    ▼
+ResNet50 Feature Extraction (2048 features per frame)
+    │
+    ▼
+GRU Layer 1 (16 units) → Temporal pattern analysis
+    │
+    ▼
+GRU Layer 2 (8 units) → Refined patterns
+    │
+    ▼
+Dense Layers → Binary Classification [Non-Violent, Violent]
+```
+
+### Why Temporal Analysis?
+
+**Single Frame (Phases 1-2):**
+- ❌ Can't distinguish playing from fighting
+- ❌ Misses escalation patterns
+- ❌ No temporal context
+- 📊 67% accuracy
+
+**20-Frame Sequence (Phase 3):**
+- ✅ Sees motion patterns (hitting, pushing, kicking)
+- ✅ Detects escalation (calm → tense → violent)
+- ✅ Understands context (sustained vs momentary)
+- 🎯 78-93% accuracy (based on research)
+
+### Installation
+
+```bash
+# Install all training dependencies (TensorFlow, OpenCV, scikit-learn, tqdm)
+pip3 install opencv-python tensorflow scikit-learn tqdm
+
+# Verify installation
+python3 -c "import tensorflow as tf; import cv2; print(f'TensorFlow: {tf.__version__}, OpenCV: {cv2.__version__}')"
+```
+
+### Training the Model
+
+**You already have the dataset:** RWF-2000 Violence Detection Dataset in `tests/data/Videos/`
+
+**Quick Training Test** (~10 minutes, 20 videos):
+```bash
+python3 tools/training/train_temporal_detector.py \
+  --violent tests/data/Videos/FightingA_Part1 \
+  --normal tests/data/Videos/Normal_Videos_for_Event_Recognition/Normal_Videos_for_Event_Recognition \
+  --epochs 5 \
+  --max-videos 20 \
+  --output models/temporal_test.h5
+```
+
+**Expected:** 60-75% accuracy (small dataset test)
+
+**Full Training** (1-3 hours CPU, 200 videos):
+```bash
+# Collect all fighting videos
+mkdir -p tests/data/Videos/all_fighting
+find tests/data/Videos/FightingA_* -name "*.mp4" -exec cp {} tests/data/Videos/all_fighting/ \;
+
+# Train on full dataset
+python3 tools/training/train_temporal_detector.py \
+  --violent tests/data/Videos/all_fighting \
+  --normal tests/data/Videos/Normal_Videos_for_Event_Recognition/Normal_Videos_for_Event_Recognition \
+  --epochs 15 \
+  --max-videos 200 \
+  --batch-size 16 \
+  --output models/temporal_full.h5
+```
+
+**Expected:** 78-85% accuracy (RNN only), 85-93% (RNN + Pose combined)
+
+### Testing Trained Model
+
+**Test on single video:**
+```python
+python3 << 'EOF'
+import cv2
+import sys
+sys.path.insert(0, 'packages/nura-detectors/src')
+from nura_detectors.temporal_detector import TemporalViolenceDetector
+
+# Load trained model
+detector = TemporalViolenceDetector(
+    sequence_length=20,
+    model_path="models/temporal_full.h5"
+)
+
+# Test on video
+video_path = "tests/data/Videos/FightingA_Part1/Fighting001_x264A.mp4"
+cap = cv2.VideoCapture(video_path)
+
+frame_count = 0
+while cap.isOpened() and frame_count < 20:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    
+    ready = detector.add_frame(frame)
+    frame_count += 1
+    
+    if ready:
+        result = detector.detect(ready_for_inference=True)
+        print(f"Violence Detected: {result.violence_detected}")
+        print(f"Probability: {result.violence_probability:.2%}")
+        print(f"Details: {result.details}")
+        break
+
+cap.release()
+EOF
+```
+
+### Monitoring Training Progress
+
+**Watch for these metrics:**
+```
+Epoch 1/15
+loss: 0.6234 - accuracy: 0.6500 - val_loss: 0.5890 - val_accuracy: 0.7100
+
+Good signs:
+✅ val_accuracy increasing
+✅ val_loss decreasing
+✅ No huge gap between train/val (no overfitting)
+
+Bad signs:
+❌ val_accuracy stuck or decreasing
+❌ val_loss increasing
+❌ Training accuracy 95%+ but validation 60% (overfitting)
+```
+
+**Expected training curve:**
+- Epoch 1: 65% accuracy
+- Epoch 5: 76% accuracy
+- Epoch 10: 78-82% accuracy (plateau)
+- Epoch 15: 80-85% accuracy (peak)
+
+### Troubleshooting Training
+
+**Low Accuracy (<70%)**
+```bash
+# Check dataset balance
+python3 << 'EOF'
+import glob
+violent = len(glob.glob("tests/data/Videos/FightingA_Part1/*.mp4"))
+normal = len(glob.glob("tests/data/Videos/Normal_Videos*/*.mp4"))
+print(f"Violent: {violent}, Normal: {normal}")
+print(f"Balance: {min(violent,normal)/max(violent,normal):.1%}")
+EOF
+
+# Should be >50% balanced
+```
+
+**Training Too Slow**
+```bash
+# Use smaller sequence length
+--sequence-length 10  # Instead of 20
+
+# Use fewer videos initially
+--max-videos 50
+
+# Use smaller batch size
+--batch-size 4
+```
+
+**Out of Memory**
+```bash
+# Reduce batch size
+--batch-size 2
+
+# Reduce max videos
+--max-videos 50
+
+# Force CPU (slower but more stable)
+export CUDA_VISIBLE_DEVICES=""
+```
+
+### Integration with Hybrid System
+
+After training, integrate into hybrid router:
+
+```python
+# services/nura-vlm/src/hybrid_router.py
+
+class HybridRouter:
+    def __init__(self):
+        # ...existing detectors...
+        
+        # Add temporal detector
+        from nura_detectors import TemporalViolenceDetector
+        self.temporal_detector = TemporalViolenceDetector(
+            model_path="models/temporal_full.h5"
+        )
+    
+    async def analyze_frame(self, frame, camera_id):
+        # Add frame to temporal buffer
+        ready = self.temporal_detector.add_frame(frame)
+        
+        # Run fast-path detectors (instant)
+        fast_path_results = await self._run_fast_path(frame)
+        
+        # If temporal buffer full, use for validation
+        if ready:
+            temporal_result = self.temporal_detector.detect(True)
+            
+            if temporal_result.violence_probability > 0.7:
+                # High confidence from RNN
+                return self._create_alert(temporal_result)
+        
+        # Otherwise use fast-path results
+        # ...existing logic...
+```
+
+### Files Created
+
+```
+✅ packages/nura-detectors/src/nura_detectors/temporal_detector.py
+✅ packages/nura-detectors/src/nura_detectors/pose_detector.py
+✅ tools/training/train_temporal_detector.py
+```
+
+### Success Metrics - Phase 3
+
+| Metric | Target | Status |
+|--------|--------|--------|
+| RNN Model Created | ✅ | Done |
+| Training Pipeline | ✅ | Done |
+| Model Trained | ⏳ | Pending (you run it) |
+| Accuracy > 78% | 🎯 | After training |
+| Integrated with Hybrid | ⏳ | After training |
+| Final Accuracy > 93% | 🎯 | RNN + Pose combined |
+
+---
+
 ## 🚀 Next Steps
 
-### Immediate (Optional)
-1. **Create validation dataset** - Label 50+ images to measure precision/recall
-2. **Tune thresholds** - Optimize based on real data
-3. **Add more test images** - Expand coverage
+### Immediate
+1. **Train temporal model** - Run training pipeline on RWF-2000 dataset
+2. **Evaluate accuracy** - Compare to article's 78-93% benchmark
+3. **Integrate into hybrid** - Add temporal detector to routing logic
 
-### Phase 2 (Production)
-1. **ML-based detectors** - Replace heuristics with trained models
-   - YOLO for person/object detection
-   - I3D for action recognition
-   - FER for emotion analysis
-2. **Confidence calibration** - Train confidence estimator
-3. **A/B testing** - Compare against VLM-only in production
+### Phase 4 (Advanced)
+1. **Combine RNN + Pose** - Ensemble prediction for 93% accuracy
+2. **Create validation dataset** - Label 100+ images/videos
+3. **Fine-tune thresholds** - Optimize for production
+4. **A/B testing** - Compare against baseline in production
 
 ---
 

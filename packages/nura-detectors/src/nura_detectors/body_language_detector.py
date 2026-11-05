@@ -79,6 +79,12 @@ class BodyLanguageDetector:
         defensive_score = 0.0
         details = []
 
+        # Track individual indicators for rule-based detection
+        has_personal_space_violation = False
+        has_cornering = False
+        has_height_dominance = False
+        indicator_count = 0
+
         # Sort by vertical position (y-coordinate)
         people_sorted = sorted(people, key=lambda p: p[1])
 
@@ -94,34 +100,59 @@ class BodyLanguageDetector:
                 # Calculate distance
                 distance = np.sqrt((cx1 - cx2)**2 + (cy1 - cy2)**2)
 
-                # Personal space violation (too close)
-                if distance < min(w1, w2) * 1.5:
+                # Check proximity at two levels:
+                # 1. Very close = personal space violation (confrontational)
+                # 2. Close = can check other indicators (interacting)
+
+                very_close_threshold = min(w1, w2) * 1.5  # Confrontational distance
+                close_threshold = min(w1, w2) * 2.0  # Interaction distance
+
+                is_very_close = distance < very_close_threshold
+                is_close = distance < close_threshold
+
+                # Personal space violation (very close - confrontational distance)
+                if is_very_close:
                     intimidation_score += 0.3
+                    has_personal_space_violation = True
                     details.append(f"Personal space violation: {distance:.0f}px")
 
-                # Check if one person is cornered (near edge)
-                frame_h, frame_w = frame.shape[:2]
+                # Check other indicators if people are interacting (close but not necessarily confrontational)
+                if is_close:
+                    frame_h, frame_w = frame.shape[:2]
 
-                # Person near wall/edge
-                margin = 50
-                if (x2 < margin or x2 + w2 > frame_w - margin or
-                    y2 < margin or y2 + h2 > frame_h - margin):
-                    intimidation_score += 0.4
-                    details.append("Person backed against wall/edge")
+                    # Person near wall/edge AND close to another person (cornered)
+                    margin = 50
+                    if (x2 < margin or x2 + w2 > frame_w - margin or
+                        y2 < margin or y2 + h2 > frame_h - margin):
+                        intimidation_score += 0.4
+                        has_cornering = True
+                        details.append("Person backed against wall/edge")
 
-                # Height difference (standing over someone)
-                if h1 > h2 * 1.3 and y1 < y2:
-                    intimidation_score += 0.3
-                    details.append(f"Height imbalance: {h1}px vs {h2}px")
+                    # Height difference (standing over someone) - only if close
+                    if h1 > h2 * 1.3 and y1 < y2:
+                        intimidation_score += 0.3
+                        has_height_dominance = True
+                        details.append(f"Height imbalance: {h1}px vs {h2}px")
 
         # Check for defensive postures
         defensive_score = self._detect_defensive_posture(frame, people)
         if defensive_score > 0.3:
             intimidation_score += defensive_score
+            indicator_count += 1
             details.append(f"Defensive posture detected: {defensive_score:.2f}")
 
-        # Final decision (lowered threshold from 0.5 to 0.35 for better sensitivity)
-        intimidation_detected = intimidation_score >= 0.35
+        # Count distinct indicators
+        if has_personal_space_violation:
+            indicator_count += 1
+        if has_cornering:
+            indicator_count += 1
+        if has_height_dominance:
+            indicator_count += 1
+
+        # Final decision: Require MULTIPLE indicators (not just a score)
+        # AND a minimum score to ensure there's actual concerning behavior
+        # indicator_count >= 2 prevents false positives from single ambiguous signals
+        intimidation_detected = (intimidation_score >= 0.4 and indicator_count >= 2)
         confidence = min(intimidation_score + 0.2, 1.0) if intimidation_detected else 0.9
 
         if intimidation_detected:

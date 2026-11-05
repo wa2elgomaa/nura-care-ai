@@ -94,11 +94,11 @@ else:  # 30% of frames
 brew install ollama
 
 # Pull optimized model
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # Enable Metal GPU (automatic on Mac)
 # Test
-ollama run llava:7b "Describe this image" < test_classroom1.jpg
+ollama run qwen3-vl:8b-instruct "Describe this image" < test_classroom1.jpg
 ```
 
 **Timeline:** 1 hour  
@@ -152,7 +152,7 @@ ollama run llava:7b "Describe this image" < test_classroom1.jpg
 brew install ollama
 
 # Test with image
-ollama run llava:7b "Analyze this classroom" < tests/images/test_classroom1.jpg
+ollama run qwen3-vl:8b-instruct "Analyze this classroom" < tests/images/test_classroom1.jpg
 
 # Measure time - should be 30-60s (vs 180s current)
 ```
@@ -249,10 +249,10 @@ Everything is documented and ready:
 brew install ollama
 
 # 2. Pull model
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # 3. Test
-time ollama run llava:7b "Describe this classroom" < tests/images/test_classroom1.jpg
+time ollama run qwen3-vl:8b-instruct "Describe this classroom" < tests/images/test_classroom1.jpg
 
 # Expected: 30-60 seconds (vs 180s current)
 # That's 3-6x faster immediately!

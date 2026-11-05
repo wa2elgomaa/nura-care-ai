@@ -40,7 +40,7 @@ NURA is an **AI-powered safety monitoring system** that:
 ```bash
 # 1. Install native Ollama
 brew install ollama && ollama serve
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # 2. Configure environment
 cp .env.example .env
@@ -66,7 +66,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai 
 
 # 4. Pull VLM model
 docker network connect nura_lan_net nura-ollama
-docker exec nura-ollama ollama pull llava:7b
+docker exec nura-ollama ollama pull qwen3-vl:8b-instruct
 docker network disconnect nura_lan_net nura-ollama
 ```
 

@@ -76,7 +76,7 @@ Created dual-environment Docker Compose setup with platform-specific optimizatio
 ├─────────────────────────────────────────────┤
 │                                             │
 │  Native Ollama (Metal GPU)                  │
-│  ├─ llava:7b model                          │
+│  ├─ qwen3-vl:8b-instruct model                          │
 │  ├─ Metal GPU acceleration                  │
 │  └─ host.docker.internal:11434              │
 │                                             │
@@ -109,7 +109,7 @@ Created dual-environment Docker Compose setup with platform-specific optimizatio
 │                                             │
 │  Ollama Container (CUDA)                    │
 │  ├─ NVIDIA GPU runtime                      │
-│  ├─ llava:7b in VRAM                        │
+│  ├─ qwen3-vl:8b-instruct in VRAM                        │
 │  └─ Port 11434                              │
 │         │                                   │
 │         ▼                                   │
@@ -145,7 +145,7 @@ brew install ollama
 ollama serve  # Keep this running
 
 # 3. Pull model (in new terminal)
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 ```
 
 #### Start Services
@@ -234,7 +234,7 @@ docker compose \
 docker network connect nura_lan_net nura-ollama
 
 # Pull model
-docker exec nura-ollama ollama pull llava:7b
+docker exec nura-ollama ollama pull qwen3-vl:8b-instruct
 
 # Disconnect
 docker network disconnect nura_lan_net nura-ollama

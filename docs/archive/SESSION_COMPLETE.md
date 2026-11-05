@@ -175,7 +175,7 @@ nura-care-source/
 # 1. Install native Ollama (REQUIRED)
 brew install ollama
 ollama serve  # Keep running in background
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # 2. Configure
 cp .env.example .env
@@ -190,7 +190,7 @@ docker compose -f compose.yaml -f compose.mac.yaml --env-file .env --profile app
 # 4. Verify
 docker compose ps
 curl http://localhost:8001/health
-ollama ps  # Should show llava:7b loaded
+ollama ps  # Should show qwen3-vl:8b-instruct loaded
 ```
 
 ### GPU Deployment Quick Start
@@ -211,7 +211,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml --env-file .env --profile ai 
 
 # 4. Pull models
 docker network connect nura_lan_net nura-ollama
-docker exec nura-ollama ollama pull llava:7b
+docker exec nura-ollama ollama pull qwen3-vl:8b-instruct
 docker network disconnect nura_lan_net nura-ollama
 
 # 5. Verify

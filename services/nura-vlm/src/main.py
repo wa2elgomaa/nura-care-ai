@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     """Environment configuration"""
     nats_url: str = "nats://nats:4222"
     ollama_url: str = "http://ollama:11434"
-    vlm_model: str = "llava:13b"  # or "llava:7b" or "moondream"
+    vlm_model: str = "qwen3-vl:8b-instruct"  # or "qwen3-vl:8b-instruct" or "moondream" or "qwen3-vl:8b-instruct"
     site_id: str = "dev-site-001"
     log_level: str = "info"
 
@@ -164,7 +164,7 @@ async def root():
         "description": "Vision-Language Model for childcare safety monitoring",
         "models_available": [
             "llava:13b",    # High quality, 24GB VRAM
-            "llava:7b",     # Medium quality, 16GB VRAM
+            "qwen3-vl:8b-instruct",     # Medium quality, 16GB VRAM
             "moondream",    # Lightweight, 8GB VRAM
         ]
     }

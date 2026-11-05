@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile.gpu
     environment:
       OLLAMA_URL: http://ollama:11434
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
     environment:
       OLLAMA_URL: http://ollama:11434
-      VLM_MODEL: ${VLM_MODEL:-llava:7b}
+      VLM_MODEL: ${VLM_MODEL:-qwen3-vl:8b-instruct}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
       VLM_TIMEOUT: ${VLM_TIMEOUT:-180}
@@ -229,7 +229,7 @@ services:
 # - Batch sizes: Larger with more VRAM, smaller with less
 #
 # Memory Management:
-# - llava:7b model: ~4-5GB VRAM per instance
+# - qwen3-vl:8b-instruct model: ~4-5GB VRAM per instance
 # - llava:13b model: ~7-8GB VRAM per instance
 # - Reserve 2-3GB VRAM for overhead
 # - Examples:

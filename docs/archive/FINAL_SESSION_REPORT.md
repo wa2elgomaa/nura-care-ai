@@ -105,7 +105,7 @@ Transform VLM performance from 2-3 minutes per image to real-time multi-camera c
 - Status: Production but needs optimization
 
 ### 5. Integration Testing (1 hour)
-- ✅ VLM service operational with llava:7b
+- ✅ VLM service operational with qwen3-vl:8b-instruct
 - ✅ RAG service: 66% similarity, 12ms queries
 - ✅ Rules engine connected
 - ✅ 7/7 integration tests passed
@@ -125,7 +125,7 @@ Transform VLM performance from 2-3 minutes per image to real-time multi-camera c
 
 ### Current State
 ```
-Platform: Ollama with llava:7b on CPU
+Platform: Ollama with qwen3-vl:8b-instruct on CPU
 Hardware: Docker container on M4 Max
 Latency: 120-180 seconds per image
 Throughput: 0.006 FPS
@@ -337,7 +337,7 @@ failed to load model 'llava-v1.5-7b-mmproj.gguf': load_hparams: unknown projecto
 **Steps:**
 1. Move Ollama to native M4 Max (not Docker)
 2. Enable Metal GPU acceleration
-3. Use smaller model (llava:7b optimized)
+3. Use smaller model (qwen3-vl:8b-instruct optimized)
 4. Test performance improvement
 
 **Timeline:** Hours  

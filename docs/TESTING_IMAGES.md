@@ -164,7 +164,7 @@ ANALYSIS
   "processing_time_seconds": 45.2,
   "prompt": "Analyze this childcare image...",
   "analysis": "Detailed VLM analysis...",
-  "model": "llava:7b",
+  "model": "qwen3-vl:8b-instruct",
   "status": "success"
 }
 ```
@@ -221,7 +221,7 @@ ps aux | grep ollama
 ollama serve
 
 # In new terminal, load model
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # Verify
 ollama ps

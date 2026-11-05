@@ -42,7 +42,7 @@ brew install ollama
 ollama serve
 
 # Pull VLM model (in a new terminal)
-ollama pull llava:7b
+ollama pull qwen3-vl:8b-instruct
 
 # Verify installation
 ollama list
@@ -74,7 +74,7 @@ POSTGRES_PASSWORD=your_secure_password
 KEYCLOAK_ADMIN_PASSWORD=your_admin_password
 
 # VLM Configuration
-VLM_MODEL=llava:7b
+VLM_MODEL=qwen3-vl:8b-instruct
 VLM_TEMPERATURE=0.3
 VLM_MAX_TOKENS=500
 VLM_TIMEOUT=180
@@ -222,7 +222,7 @@ docker compose -f compose.yaml -f compose.mac.yaml restart nura-vlm
 ollama ps
 
 # Pre-load model
-ollama run llava:7b "test"
+ollama run qwen3-vl:8b-instruct "test"
 
 # Monitor GPU usage
 sudo powermetrics --samplers gpu_power -i 1000
@@ -312,7 +312,7 @@ KEYCLOAK_ADMIN_PASSWORD=your_admin_password
 CLOUD_DB_PASSWORD=your_cloud_db_password
 
 # VLM Configuration
-VLM_MODEL=llava:7b
+VLM_MODEL=qwen3-vl:8b-instruct
 VLM_TEMPERATURE=0.3
 VLM_MAX_TOKENS=500
 VLM_TIMEOUT=180
@@ -358,7 +358,7 @@ docker compose \
 ```
 
 **VRAM Requirements:**
-- llava:7b: ~4-5GB per instance + 2-3GB overhead
+- qwen3-vl:8b-instruct: ~4-5GB per instance + 2-3GB overhead
 - RTX 3060 12GB: 1 instance
 - RTX 3080 10GB: 1-2 instances
 - RTX 4090 24GB: 4 instances
@@ -370,7 +370,7 @@ docker compose \
 docker network connect nura_lan_net nura-ollama
 
 # Pull model
-docker exec nura-ollama ollama pull llava:7b
+docker exec nura-ollama ollama pull qwen3-vl:8b-instruct
 
 # Disconnect from internet
 docker network disconnect nura_lan_net nura-ollama
@@ -504,7 +504,7 @@ nvidia-smi
 # Reduce parallel instances or use smaller model
 # Edit compose.gpu.yaml:
 # - Remove vlm-parallel profile
-# - Use llava:7b instead of llava:13b
+# - Use qwen3-vl:8b-instruct instead of llava:13b
 ```
 
 **Slow performance:**

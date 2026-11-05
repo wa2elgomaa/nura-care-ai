@@ -67,7 +67,7 @@ nura-notifier (Push notification <10s total) ⏳ Next
 1. **Ollama** (for VLM)
 ```bash
 curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull llava:13b  # or llava:7b or moondream
+ollama pull llava:13b  # or qwen3-vl:8b-instruct or moondream
 ```
 
 2. **Docker Compose** (for everything else)

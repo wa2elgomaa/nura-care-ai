@@ -34,7 +34,7 @@ Analyzes camera frames to understand **context** beyond simple object detection:
 # Install Ollama: https://ollama.ai/
 
 # Pull VLM model (one-time)
-ollama pull llava:13b  # or llava:7b, or moondream
+ollama pull llava:13b  # or qwen3-vl:8b-instruct, or moondream
 
 # Create virtual environment
 python -m venv .venv
@@ -157,7 +157,7 @@ spills, unsecured furniture, or other dangers to children."
 ### Model Selection
 - **Development/Testing**: Use `moondream` (fast, lightweight)
 - **Production**: Use `llava:13b` (accurate, requires GPU)
-- **Balanced**: Use `llava:7b` (good middle ground)
+- **Balanced**: Use `qwen3-vl:8b-instruct` (good middle ground)
 
 ### Frame Sampling
 Don't analyze every frame:

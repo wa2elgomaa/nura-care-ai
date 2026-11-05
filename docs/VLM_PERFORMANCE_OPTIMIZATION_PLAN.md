@@ -1,6 +1,6 @@
 # VLM Performance Optimization Plan
 
-**Current Status**: 2-3 minutes per image (llava:7b on CPU)  
+**Current Status**: 2-3 minutes per image (qwen3-vl:8b-instruct on CPU)  
 **Target**: <5 seconds per image for real-time multi-camera processing  
 **Date**: November 3, 2026
 
@@ -11,7 +11,7 @@
 ### Problem: 3 Minutes Per Image is Unacceptable
 
 **Current Setup:**
-- Model: llava:7b (4.7 GB)
+- Model: qwen3-vl:8b-instruct (4.7 GB)
 - Hardware: CPU-only inference
 - Time: 120-180 seconds per image
 - Deployment: Ollama in Docker container
@@ -36,13 +36,13 @@
 **Approach**: Add NVIDIA GPU support to Ollama
 
 **Expected Performance:**
-- llava:7b: ~3-5 seconds per image
+- qwen3-vl:8b-instruct: ~3-5 seconds per image
 - llava:13b: ~5-10 seconds per image
 - **10-20x speedup**
 
 **Hardware Requirements:**
 - NVIDIA GPU (RTX 3060/4060 or better)
-- 8GB+ VRAM for llava:7b
+- 8GB+ VRAM for qwen3-vl:8b-instruct
 - 12GB+ VRAM for llava:13b
 - NVIDIA Container Toolkit
 
@@ -82,7 +82,7 @@ services:
 **Approach**: Switch to smaller vision models
 
 **Candidates:**
-1. **llava:7b-v1.6** (optimized variant)
+1. **qwen3-vl:8b-instruct-v1.6** (optimized variant)
 2. **bakllava:7b** (faster llava variant)
 3. **moondream2** (1.8B parameters - very fast)
 4. **CLIP + GPT-2** (lightweight, specialized)
@@ -223,7 +223,7 @@ if confidence < 0.7:
 4. **Hailo-8 AI Processor**
 
 **Expected Performance:**
-- Jetson Orin: ~2-3 seconds (llava:7b)
+- Jetson Orin: ~2-3 seconds (qwen3-vl:8b-instruct)
 - Coral TPU: ~50-100ms (specialized models)
 - Hailo-8: ~100-200ms (specialized models)
 
@@ -283,7 +283,7 @@ Jetson Orin NX (16GB)
    - Minimal accuracy loss
 
 5. **Right-Sized Models**
-   - Gemma 4E2B (4GB) vs llava:7b (4.7GB)
+   - Gemma 4E2B (4GB) vs qwen3-vl:8b-instruct (4.7GB)
    - Similar size, optimized for edge
    - Task-specific is better than general-purpose
 
@@ -370,7 +370,7 @@ Jetson Orin NX (16GB)
          ┌───────────────────────┐
          │  VLM Analysis          │  2-3 sec
          │  (GPU-accelerated)     │  (queued)
-         │  - llava:7b on GPU     │
+         │  - qwen3-vl:8b-instruct on GPU     │
          └───────────────────────┘
 ```
 
@@ -529,7 +529,7 @@ services:
 ```
 
 **2. Benchmark GPU Performance**
-- Test llava:7b with GPU
+- Test qwen3-vl:8b-instruct with GPU
 - Test llava:13b with GPU
 - Measure speedup
 

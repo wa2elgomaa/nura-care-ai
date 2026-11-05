@@ -1,7 +1,7 @@
 # VLM Test Results - Classroom Images
 
 **Date**: November 3, 2026  
-**Model**: llava:7b  
+**Model**: qwen3-vl:8b-instruct  
 **Timeout**: 180 seconds  
 **Status**: ✅ **SUCCESS**
 
@@ -9,7 +9,7 @@
 
 ## Test Configuration
 
-- **VLM Model**: llava:7b (4.7 GB)
+- **VLM Model**: qwen3-vl:8b-instruct (4.7 GB)
 - **Timeout**: Increased from 60s to 180s
 - **Temperature**: 0.3
 - **Max Tokens**: 500
@@ -62,7 +62,7 @@
 ## 🎯 Key Findings
 
 ### What Works
-✅ **Model Loading**: llava:7b loads successfully (4.7 GB)  
+✅ **Model Loading**: qwen3-vl:8b-instruct loads successfully (4.7 GB)  
 ✅ **Image Processing**: Base64 encoding and transmission working  
 ✅ **Scene Understanding**: Accurate classroom detection  
 ✅ **Adult Detection**: Successfully identifies adults in Image 1  
@@ -93,10 +93,10 @@
 ## 🔧 Technical Details
 
 ### Changes Made
-1. **Switched Model**: llava:13b → llava:7b (smaller, faster)
+1. **Switched Model**: llava:13b → qwen3-vl:8b-instruct (smaller, faster)
 2. **Increased Timeout**: 60s → 180s in vlm_client.py
-3. **Environment Variable**: Added VLM_MODEL=llava:7b to .env
-4. **Model Download**: 4.7 GB llava:7b pulled successfully
+3. **Environment Variable**: Added VLM_MODEL=qwen3-vl:8b-instruct to .env
+4. **Model Download**: 4.7 GB qwen3-vl:8b-instruct pulled successfully
 
 ### Code Changes
 **File**: `services/nura-vlm/src/vlm_client.py`
@@ -104,7 +104,7 @@
 - Line 97: Error message updated to reflect 180s timeout
 
 **File**: `.env`
-- Added: `VLM_MODEL=llava:7b`
+- Added: `VLM_MODEL=qwen3-vl:8b-instruct`
 - Added: `VLM_TEMPERATURE=0.3`
 - Added: `VLM_MAX_TOKENS=500`
 
@@ -128,7 +128,7 @@
 ## 💡 Recommendations
 
 ### Immediate
-1. ✅ **Use llava:7b** for development/testing
+1. ✅ **Use qwen3-vl:8b-instruct** for development/testing
 2. ✅ **Keep 180s timeout** for CPU inference
 3. ⚠️ **Add GPU support** for production (would reduce to <5s)
 4. ⚠️ **Improve prompt engineering** for reliable counting
@@ -146,7 +146,7 @@
 
 **VLM Integration: SUCCESSFUL**
 
-The VLM service successfully analyzes classroom images with good accuracy and detail. The llava:7b model provides sufficient quality for supervision monitoring while being faster than the 13B model. The increased timeout (180s) accommodates CPU-based inference.
+The VLM service successfully analyzes classroom images with good accuracy and detail. The qwen3-vl:8b-instruct model provides sufficient quality for supervision monitoring while being faster than the 13B model. The increased timeout (180s) accommodates CPU-based inference.
 
 **Next Steps**: 
 1. Complete end-to-end integration test with RAG + Rules
