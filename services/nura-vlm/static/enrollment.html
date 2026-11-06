@@ -413,15 +413,18 @@
         });
 
         function handleFiles(files) {
-            selectedFiles = Array.from(files).slice(0, 5); // Max 5 photos
-
-            if (selectedFiles.length < 2) {
-                showAlert('Please select at least 2 photos', 'warning');
+            if (files.length === 0) {
                 return;
             }
 
+            selectedFiles = Array.from(files).slice(0, 5); // Max 5 photos
+
             if (selectedFiles.length > 5) {
                 showAlert('Maximum 5 photos allowed. Using first 5.', 'warning');
+            } else if (selectedFiles.length < 2) {
+                showAlert(`${selectedFiles.length} photo selected. Please select at least 2 photos total.`, 'warning');
+            } else {
+                showAlert(`${selectedFiles.length} photos selected. Ready to enroll!`, 'success');
             }
 
             displayPreviews();
@@ -429,6 +432,10 @@
 
         function displayPreviews() {
             photoPreviews.innerHTML = '';
+
+            if (selectedFiles.length === 0) {
+                return;
+            }
 
             selectedFiles.forEach((file, index) => {
                 const reader = new FileReader();
@@ -440,6 +447,9 @@
                         <button type="button" class="photo-preview-remove" onclick="removePhoto(${index})">×</button>
                     `;
                     photoPreviews.appendChild(preview);
+                };
+                reader.onerror = () => {
+                    console.error('Error reading file:', file.name);
                 };
                 reader.readAsDataURL(file);
             });
