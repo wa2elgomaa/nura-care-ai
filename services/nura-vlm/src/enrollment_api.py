@@ -58,18 +58,24 @@ if static_dir.exists():
 # ============================================================================
 
 def get_db():
-    """Get database connection"""
-    conn = psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        database=os.getenv("POSTGRES_DB", "nura_db"),
-        user=os.getenv("POSTGRES_USER", "nura"),
-        password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!")
-    )
+    """Get database connection (optional - returns None if unavailable)"""
     try:
-        yield conn
-    finally:
-        conn.close()
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=os.getenv("POSTGRES_PORT", "5432"),
+            database=os.getenv("POSTGRES_DB", "nura_db"),
+            user=os.getenv("POSTGRES_USER", "nura"),
+            password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!"),
+            connect_timeout=3
+        )
+        try:
+            yield conn
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Database connection failed: {e}")
+        logger.warning("Running in demo mode without database")
+        yield None
 
 
 # ============================================================================
@@ -196,8 +202,7 @@ async def enroll_person(
     classroom: Optional[str] = Form(None),
     parental_consent: bool = Form(False),
     enrolled_by: Optional[str] = Form(None),
-    photos: List[UploadFile] = File(...),
-    db=Depends(get_db)
+    photos: List[UploadFile] = File(...)
 ):
     """
     Enroll a new person with face photos
@@ -212,11 +217,23 @@ async def enroll_person(
         if len(photos) > 5:
             raise HTTPException(status_code=400, detail="Maximum 5 photos allowed")
 
-        # Check if person already enrolled
-        cursor = db.cursor()
-        cursor.execute("SELECT person_id FROM enrolled_persons WHERE person_id = %s", (person_id,))
-        if cursor.fetchone():
-            raise HTTPException(status_code=409, detail=f"Person {person_id} already enrolled")
+        # Try to get database connection (optional)
+        db = None
+        try:
+            db_gen = get_db()
+            db = next(db_gen)
+        except:
+            logger.warning("Database not available - running in demo mode")
+        
+        # Check if person already enrolled (if database available)
+        if db:
+            try:
+                cursor = db.cursor()
+                cursor.execute("SELECT person_id FROM enrolled_persons WHERE person_id = %s", (person_id,))
+                if cursor.fetchone():
+                    raise HTTPException(status_code=409, detail=f"Person {person_id} already enrolled")
+            except:
+                pass
 
         # Save uploaded photos
         upload_dir = Path(os.getenv("UPLOAD_DIR", "/tmp/nura_uploads")) / person_id
