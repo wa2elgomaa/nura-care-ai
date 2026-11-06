@@ -155,10 +155,73 @@ if [ ! -d "services/nura-vlm/.venv" ]; then
     echo -e "${YELLOW}Installing dependencies (this may take 2-3 minutes)...${NC}"
     pip install -q --upgrade pip setuptools wheel
     pip install -q -r requirements.local.txt
+
+    # Install Phase 4B dependencies (Face Recognition)
+    echo -e "${YELLOW}Installing Phase 4B dependencies (Face Recognition)...${NC}"
+
+    # Check if Phase 4B requirements file exists
+    PHASE4B_REQ="$PROJECT_ROOT/packages/nura-detectors/requirements-phase4b.txt"
+    if [ -f "$PHASE4B_REQ" ]; then
+        # Install core dependencies
+        pip install -q psycopg2-binary pgvector
+
+        # Try InsightFace (recommended)
+        echo -e "${YELLOW}Installing InsightFace (recommended backend)...${NC}"
+        if pip install -q insightface onnxruntime 2>/dev/null; then
+            echo -e "${GREEN}✓ InsightFace installed (best accuracy)${NC}"
+            export FACE_RECOGNITION_BACKEND=insightface
+        else
+            # Fallback to face_recognition
+            echo -e "${YELLOW}InsightFace failed, trying face_recognition...${NC}"
+
+            # Check for system dependencies on macOS
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                # Install cmake and boost if not present
+                if ! command -v cmake >/dev/null 2>&1; then
+                    echo -e "${YELLOW}Installing cmake (required for dlib)...${NC}"
+                    brew install cmake 2>/dev/null || true
+                fi
+            fi
+
+            if pip install -q face-recognition 2>/dev/null; then
+                echo -e "${GREEN}✓ face_recognition installed${NC}"
+                export FACE_RECOGNITION_BACKEND=face_recognition
+            else
+                echo -e "${YELLOW}⚠ Face recognition backends unavailable${NC}"
+                echo -e "${YELLOW}  Face identification will be disabled${NC}"
+                echo -e "${YELLOW}  Install manually: pip install insightface onnxruntime${NC}"
+            fi
+        fi
+
+        # Install FastAPI for enrollment API
+        pip install -q fastapi uvicorn python-multipart
+        echo -e "${GREEN}✓ Enrollment API dependencies installed${NC}"
+    fi
+
     cd "$PROJECT_ROOT"
     echo -e "${GREEN}✓ Virtual environment created and dependencies installed${NC}"
 else
     echo -e "${GREEN}✓ Virtual environment exists${NC}"
+
+    # Check if Phase 4B dependencies are installed
+    cd services/nura-vlm
+    source .venv/bin/activate
+
+    if ! python -c "import insightface" 2>/dev/null && ! python -c "import face_recognition" 2>/dev/null; then
+        echo -e "${YELLOW}Face recognition backend not detected${NC}"
+        echo -e "${YELLOW}Installing Phase 4B dependencies...${NC}"
+
+        # Try InsightFace first
+        if pip install -q insightface onnxruntime 2>/dev/null; then
+            echo -e "${GREEN}✓ InsightFace installed${NC}"
+        elif pip install -q face-recognition 2>/dev/null; then
+            echo -e "${GREEN}✓ face_recognition installed${NC}"
+        else
+            echo -e "${YELLOW}⚠ Could not install face recognition${NC}"
+        fi
+    fi
+
+    cd "$PROJECT_ROOT"
 fi
 
 # Kill any existing VLM service
@@ -211,6 +274,48 @@ cd "$PROJECT_ROOT"
 
 # Wait for VLM to be ready
 if wait_for_service "http://localhost:8001/health" "VLM Service"; then
+
+    # 4. Start Enrollment API (Phase 4B) - if enabled
+    echo ""
+    echo -e "${BLUE}[4/4] Starting Enrollment API (Phase 4B)...${NC}"
+
+    # Check if face identification is enabled
+    ENABLE_FACE_ID=$(grep "^ENABLE_FACE_IDENTIFICATION=" "$PROJECT_ROOT/.env" 2>/dev/null | cut -d'=' -f2)
+
+    if [ "$ENABLE_FACE_ID" = "true" ]; then
+        # Check if enrollment API port is available
+        ENROLLMENT_PORT=${ENROLLMENT_API_PORT:-8002}
+
+        if check_port $ENROLLMENT_PORT; then
+            echo -e "${YELLOW}Stopping existing enrollment API on port $ENROLLMENT_PORT...${NC}"
+            kill $(lsof -t -i:$ENROLLMENT_PORT) 2>/dev/null || true
+            sleep 2
+        fi
+
+        # Start enrollment API in background
+        echo -e "${YELLOW}Starting enrollment API on port $ENROLLMENT_PORT...${NC}"
+        cd services/nura-vlm
+        source .venv/bin/activate
+        nohup python -u src/enrollment_api.py > ../../logs/enrollment-api.log 2>&1 &
+        ENROLLMENT_PID=$!
+        echo $ENROLLMENT_PID > ../../.enrollment.pid
+        cd "$PROJECT_ROOT"
+
+        # Wait for enrollment API
+        sleep 3
+        if wait_for_service "http://localhost:$ENROLLMENT_PORT/health" "Enrollment API"; then
+            ENROLLMENT_RUNNING=true
+        else
+            echo -e "${YELLOW}⚠ Enrollment API failed to start${NC}"
+            echo -e "${YELLOW}  Check logs: tail -f logs/enrollment-api.log${NC}"
+            ENROLLMENT_RUNNING=false
+        fi
+    else
+        echo -e "${YELLOW}Face identification disabled (ENABLE_FACE_IDENTIFICATION=false)${NC}"
+        echo -e "${YELLOW}Skipping enrollment API startup${NC}"
+        ENROLLMENT_RUNNING=false
+    fi
+
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║          ✓ All Services Started Successfully              ║${NC}"
@@ -219,16 +324,41 @@ if wait_for_service "http://localhost:8001/health" "VLM Service"; then
     echo -e "${BLUE}Service Status:${NC}"
     echo -e "  ${GREEN}•${NC} Ollama (VLM):        http://localhost:11434"
     echo -e "  ${GREEN}•${NC} VLM Service (API):   http://localhost:8001"
+
+    if [ "$ENROLLMENT_RUNNING" = true ]; then
+        echo -e "  ${GREEN}•${NC} Enrollment API:      http://localhost:$ENROLLMENT_PORT"
+        echo -e "  ${GREEN}•${NC} Enrollment UI:       http://localhost:$ENROLLMENT_PORT/static/enrollment.html"
+    else
+        echo -e "  ${YELLOW}•${NC} Enrollment API:      Not running"
+    fi
+
+    echo ""
+    echo -e "${BLUE}Phase 4B Features:${NC}"
+    if [ "$ENROLLMENT_RUNNING" = true ]; then
+        echo -e "  ${GREEN}✓${NC} Person Tracking:     Enabled"
+        echo -e "  ${GREEN}✓${NC} Face Identification: Enabled"
+        echo -e "  ${GREEN}✓${NC} Named Alerts:        Enabled"
+    else
+        echo -e "  ${YELLOW}•${NC} Face Identification: Disabled (set ENABLE_FACE_IDENTIFICATION=true)"
+    fi
+
     echo ""
     echo -e "${BLUE}Next Steps:${NC}"
     echo -e "  ${YELLOW}1.${NC} Test the system:  ${YELLOW}./test-images.sh${NC}"
-    echo -e "  ${YELLOW}2.${NC} Check health:     ${YELLOW}curl http://localhost:8001/health${NC}"
-    echo -e "  ${YELLOW}3.${NC} View logs:        ${YELLOW}tail -f logs/vlm-service.log${NC}"
-    echo -e "  ${YELLOW}4.${NC} Stop services:    ${YELLOW}./stop.sh${NC}"
+
+    if [ "$ENROLLMENT_RUNNING" = true ]; then
+        echo -e "  ${YELLOW}2.${NC} Enroll persons:   ${YELLOW}open http://localhost:$ENROLLMENT_PORT/static/enrollment.html${NC}"
+        echo -e "  ${YELLOW}3.${NC} Test integration: ${YELLOW}python3 tools/testing/test_full_integration.py${NC}"
+    fi
+
+    echo -e "  ${YELLOW}4.${NC} Check health:     ${YELLOW}curl http://localhost:8001/health${NC}"
+    echo -e "  ${YELLOW}5.${NC} View logs:        ${YELLOW}tail -f logs/vlm-service.log${NC}"
+    echo -e "  ${YELLOW}6.${NC} Stop services:    ${YELLOW}./stop.sh${NC}"
     echo ""
     echo -e "${BLUE}Documentation:${NC}"
-    echo -e "  ${YELLOW}•${NC} Quick Start: ${YELLOW}less QUICK_START.md${NC}"
-    echo -e "  ${YELLOW}•${NC} README:      ${YELLOW}less README.md${NC}"
+    echo -e "  ${YELLOW}•${NC} Quick Start:      ${YELLOW}less QUICK_START.md${NC}"
+    echo -e "  ${YELLOW}•${NC} Phase 4B Guide:   ${YELLOW}less docs/phases/PHASE4B_QUICKSTART.md${NC}"
+    echo -e "  ${YELLOW}•${NC} README:           ${YELLOW}less README.md${NC}"
     echo ""
 else
     echo -e "${RED}✗ VLM Service failed to start${NC}"

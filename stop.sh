@@ -18,7 +18,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT"
 
 # Stop VLM Service
-echo -e "${BLUE}[1/3] Stopping VLM Service...${NC}"
+echo -e "${BLUE}[1/4] Stopping VLM Service...${NC}"
 if [ -f .vlm.pid ]; then
     VLM_PID=$(cat .vlm.pid)
     if kill -0 $VLM_PID 2>/dev/null; then
@@ -38,14 +38,36 @@ else
     fi
 fi
 
+# Stop Enrollment API (Phase 4B)
+echo ""
+echo -e "${BLUE}[2/4] Stopping Enrollment API...${NC}"
+if [ -f .enrollment.pid ]; then
+    ENROLLMENT_PID=$(cat .enrollment.pid)
+    if kill -0 $ENROLLMENT_PID 2>/dev/null; then
+        kill $ENROLLMENT_PID
+        echo -e "${GREEN}✓ Enrollment API stopped (PID: $ENROLLMENT_PID)${NC}"
+    else
+        echo -e "${YELLOW}Enrollment API not running${NC}"
+    fi
+    rm -f .enrollment.pid
+else
+    # Try to kill by port
+    if lsof -i :8002 >/dev/null 2>&1; then
+        kill $(lsof -t -i:8002) 2>/dev/null || true
+        echo -e "${GREEN}✓ Enrollment API stopped${NC}"
+    else
+        echo -e "${YELLOW}Enrollment API not running${NC}"
+    fi
+fi
+
 # Stop NATS (Docker)
 echo ""
-echo -e "${BLUE}[2/3] Stopping NATS...${NC}"
+echo -e "${BLUE}[3/4] Stopping NATS...${NC}"
 docker compose -f compose.yaml stop nats 2>/dev/null || echo -e "${YELLOW}NATS not running in Docker${NC}"
 
 # Ollama (keep running - it's a system service)
 echo ""
-echo -e "${BLUE}[3/3] Ollama...${NC}"
+echo -e "${BLUE}[4/4] Ollama...${NC}"
 echo -e "${YELLOW}Keeping Ollama running (system service)${NC}"
 echo -e "${YELLOW}To stop Ollama: killall ollama${NC}"
 
