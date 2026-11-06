@@ -22,6 +22,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import psycopg2
 import cv2
@@ -44,6 +46,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files directory
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 # ============================================================================
@@ -168,11 +175,14 @@ def load_face_identifier():
 
 @app.get("/")
 async def root():
-    """API root"""
+    """API root - redirect to enrollment UI"""
     return {
         "name": "Nura Person Enrollment API",
         "version": "1.0.0",
-        "status": "running"
+        "status": "running",
+        "enrollment_ui": "/static/enrollment.html",
+        "api_docs": "/docs",
+        "health": "/health"
     }
 
 
