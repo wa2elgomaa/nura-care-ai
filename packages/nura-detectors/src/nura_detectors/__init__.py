@@ -16,6 +16,10 @@ from .person_tracker import (
     PersonAction,
     Track
 )
+from .face_identifier import (
+    FaceIdentifier,
+    FaceIdentity
+)
 
 __all__ = [
     "ViolenceDetector",
@@ -37,4 +41,7 @@ __all__ = [
     "PersonHistoryTracker",
     "PersonAction",
     "Track",
+    # Phase 4B: Person Identification
+    "FaceIdentifier",
+    "FaceIdentity",
 ]
