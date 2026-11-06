@@ -84,11 +84,13 @@ class HybridRouter:
         self.pose_detector = None  # ML-based pose detector (Phase 2)
         self.temporal_detector = None  # Temporal sequence detector (Phase 3)
         self.person_tracker = None  # Person tracking (Phase 4)
+        self.face_identifier = None  # Face identification (Phase 4B)
 
         # Frame buffer for temporal analysis (per camera)
         self.frame_buffers = {}  # camera_id -> list of frames
         self.enable_temporal = os.getenv('ENABLE_TEMPORAL_DETECTION', 'false').lower() == 'true'
         self.enable_person_tracking = os.getenv('ENABLE_PERSON_TRACKING', 'false').lower() == 'true'
+        self.enable_face_identification = os.getenv('ENABLE_FACE_IDENTIFICATION', 'false').lower() == 'true'
 
     def _init_detectors(self):
         """Lazy-load detectors on first use"""
@@ -175,7 +177,40 @@ class HybridRouter:
                     logger.warning(f"Person tracker unavailable: {tracker_err}")
                     self.person_tracker = None
 
-            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose, person_tracking)")
+            # Try to load face identifier (Phase 4B)
+            if self.enable_face_identification and self.enable_person_tracking:
+                try:
+                    from nura_detectors import FaceIdentifier
+                    import psycopg2
+
+                    # Get database connection
+                    db_conn = psycopg2.connect(
+                        host=os.getenv("POSTGRES_HOST", "localhost"),
+                        port=os.getenv("POSTGRES_PORT", "5432"),
+                        database=os.getenv("POSTGRES_DB", "nura_db"),
+                        user=os.getenv("POSTGRES_USER", "nura"),
+                        password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!")
+                    )
+
+                    backend = os.getenv("FACE_RECOGNITION_BACKEND", "insightface")
+                    min_confidence = float(os.getenv("FACE_RECOGNITION_MIN_CONFIDENCE", "0.6"))
+
+                    self.face_identifier = FaceIdentifier(
+                        db_connection=db_conn,
+                        backend=backend,
+                        min_confidence=min_confidence
+                    )
+
+                    enrolled_count = self.face_identifier.get_enrollment_count()
+                    logger.info(f"✓ Face identifier initialized ({backend}, {enrolled_count} enrolled persons)")
+                except (ImportError, Exception) as face_err:
+                    logger.warning(f"Face identifier unavailable: {face_err}")
+                    logger.warning("Face identification disabled - person tracking will use anonymous IDs")
+                    self.face_identifier = None
+            elif self.enable_face_identification and not self.enable_person_tracking:
+                logger.warning("Face identification requires person tracking - enable ENABLE_PERSON_TRACKING=true")
+
+            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose, person_tracking, face_id)")
         except (ImportError, Exception) as e:
             logger.warning(f"Fast-path detectors not available: {e}")
             logger.warning("Will fall back to VLM-only mode")
@@ -210,6 +245,29 @@ class HybridRouter:
         if self.person_tracker:
             person_tracks = self.person_tracker.update(frame)
             logger.info(f"Person tracking: {len(person_tracks)} people tracked")
+
+            # Step 0A.1: Identify persons by face (if enabled)
+            if self.face_identifier and person_tracks:
+                for track in person_tracks:
+                    try:
+                        identity = self.face_identifier.identify(frame, track['bbox'])
+
+                        if identity:
+                            track['identity'] = identity.person_id
+                            track['display_name'] = identity.display_name
+                            track['full_name'] = identity.full_name
+                            track['identity_confidence'] = identity.confidence
+                            track['identity_method'] = identity.method
+
+                            logger.info(f"Identified person {track['id']} as {identity.display_name} "
+                                      f"(confidence: {identity.confidence:.2%})")
+                        else:
+                            track['identity'] = None
+                            track['display_name'] = f"Person {track['id']}"
+                    except Exception as id_err:
+                        logger.warning(f"Face identification failed for person {track['id']}: {id_err}")
+                        track['identity'] = None
+                        track['display_name'] = f"Person {track['id']}"
 
         # Step 0B: Add frame to temporal buffer (if enabled)
         temporal_result = None
@@ -597,13 +655,34 @@ class HybridRouter:
         # Extract persons involved (Phase 4)
         persons_involved = fast_path_results.get("persons_involved", [])
 
+        # Generate detailed alert message with person names (Phase 4B)
+        details = result.get("details", "Fast-path detection")
+        if persons_involved and "person_tracking" in fast_path_results:
+            tracks = fast_path_results["person_tracking"].get("tracks", [])
+
+            # Map person IDs to names
+            person_names = []
+            for person_id in persons_involved:
+                track = next((t for t in tracks if t['id'] == person_id), None)
+                if track:
+                    name = track.get('display_name', f"Person {person_id}")
+                    person_names.append(name)
+
+            if person_names:
+                if len(person_names) == 1:
+                    details = f"{violation_type.replace('_', ' ').title()}: {person_names[0]} involved"
+                elif len(person_names) == 2:
+                    details = f"{violation_type.replace('_', ' ').title()}: {person_names[0]} and {person_names[1]} involved"
+                else:
+                    details = f"{violation_type.replace('_', ' ').title()}: {', '.join(person_names[:-1])} and {person_names[-1]} involved"
+
         return ViolationAlert(
             violation_detected=True,
             violation_type=violation_type,
             severity=result.get("severity", "medium"),
             confidence=decision["confidence"],
             source=DetectionSource.FAST_PATH.value,
-            details=result.get("details", "Fast-path detection"),
+            details=details,
             fast_path_results=fast_path_results,
             persons_involved=persons_involved if persons_involved else None,
             immediate_action_required=(
