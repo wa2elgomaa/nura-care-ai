@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nura Person Enrollment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        label .required {
+            color: #e74c3c;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .photo-upload {
+            border: 2px dashed #e0e0e0;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .photo-upload:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .photo-upload.drag-over {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+
+        .photo-upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .photo-upload-text {
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .photo-upload-hint {
+            color: #999;
+            font-size: 12px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .photo-previews {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .photo-preview {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #e0e0e0;
+        }
+
+        .photo-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-preview-remove {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(231, 76, 60, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .consent-text {
+            color: #555;
+            font-size: 14px;
+        }
+
+        .consent-text a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .consent-text a:hover {
+            text-decoration: underline;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👤 Person Enrollment</h1>
+        <p class="subtitle">Enroll a new child in the monitoring system</p>
+
+        <div id="alert" class="alert"></div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Enrolling person...</p>
+        </div>
+
+        <form id="enrollmentForm">
+            <!-- Personal Information -->
+            <div class="form-group">
+                <label>Person ID <span class="required">*</span></label>
+                <input type="text" id="person_id" name="person_id" placeholder="e.g., adam_w" required>
+                <small style="color: #666; font-size: 12px;">Unique identifier (lowercase, underscore for spaces)</small>
+            </div>
+
+            <div class="form-group">
+                <label>Full Name <span class="required">*</span></label>
+                <input type="text" id="full_name" name="full_name" placeholder="e.g., Adam Williams" required>
+            </div>
+
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="display_name" name="display_name" placeholder="e.g., Adam W.">
+                <small style="color: #666; font-size: 12px;">Optional - defaults to full name</small>
+            </div>
+
+            <div class="row">
+                <div class="form-group">
+                    <label>Age</label>
+                    <input type="number" id="age_years" name="age_years" min="1" max="18" placeholder="e.g., 5">
+                </div>
+
+                <div class="form-group">
+                    <label>Grade Level</label>
+                    <select id="grade_level" name="grade_level">
+                        <option value="">Select grade</option>
+                        <option value="Pre-K">Pre-K</option>
+                        <option value="Kindergarten">Kindergarten</option>
+                        <option value="First Grade">First Grade</option>
+                        <option value="Second Grade">Second Grade</option>
+                        <option value="Third Grade">Third Grade</option>
+                        <option value="Fourth Grade">Fourth Grade</option>
+                        <option value="Fifth Grade">Fifth Grade</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Classroom</label>
+                <input type="text" id="classroom" name="classroom" placeholder="e.g., Room 3A">
+            </div>
+
+            <!-- Photo Upload -->
+            <div class="form-group">
+                <label>Face Photos (2-5 photos) <span class="required">*</span></label>
+                <div class="photo-upload" id="photoUpload">
+                    <div class="photo-upload-icon">📸</div>
+                    <div class="photo-upload-text">Click to upload or drag and drop</div>
+                    <div class="photo-upload-hint">Upload 2-5 photos from different angles</div>
+                </div>
+                <input type="file" id="photos" name="photos" accept="image/*" multiple>
+                <div id="photoPreviews" class="photo-previews"></div>
+            </div>
+
+            <!-- Consent -->
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="parental_consent" name="parental_consent">
+                    <label for="parental_consent" class="consent-text">
+                        I confirm that parental consent has been obtained for facial recognition enrollment.
+                        <a href="#" onclick="alert('Privacy policy details would go here'); return false;">Privacy Policy</a>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Enrolled By -->
+            <div class="form-group">
+                <label>Enrolled By</label>
+                <input type="text" id="enrolled_by" name="enrolled_by" placeholder="Your name (optional)">
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="button" class="btn-secondary" onclick="resetForm()">Clear Form</button>
+                <button type="submit" class="btn-primary" id="submitBtn">Enroll Person</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const API_URL = window.location.protocol + '//' + window.location.hostname + ':8002';
+        let selectedFiles = [];
+
+        // Photo upload handling
+        const photoUpload = document.getElementById('photoUpload');
+        const photosInput = document.getElementById('photos');
+        const photoPreviews = document.getElementById('photoPreviews');
+
+        photoUpload.addEventListener('click', () => photosInput.click());
+
+        photoUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            photoUpload.classList.add('drag-over');
+        });
+
+        photoUpload.addEventListener('dragleave', () => {
+            photoUpload.classList.remove('drag-over');
+        });
+
+        photoUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            photoUpload.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        photosInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files).slice(0, 5); // Max 5 photos
+
+            if (selectedFiles.length < 2) {
+                showAlert('Please select at least 2 photos', 'warning');
+                return;
+            }
+
+            if (selectedFiles.length > 5) {
+                showAlert('Maximum 5 photos allowed. Using first 5.', 'warning');
+            }
+
+            displayPreviews();
+        }
+
+        function displayPreviews() {
+            photoPreviews.innerHTML = '';
+
+            selectedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const preview = document.createElement('div');
+                    preview.className = 'photo-preview';
+                    preview.innerHTML = `
+                        <img src="${e.target.result}" alt="Photo ${index + 1}">
+                        <button type="button" class="photo-preview-remove" onclick="removePhoto(${index})">×</button>
+                    `;
+                    photoPreviews.appendChild(preview);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function removePhoto(index) {
+            selectedFiles.splice(index, 1);
+            displayPreviews();
+        }
+
+        // Form submission
+        document.getElementById('enrollmentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (selectedFiles.length < 2) {
+                showAlert('Please upload at least 2 photos', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('person_id', document.getElementById('person_id').value);
+            formData.append('full_name', document.getElementById('full_name').value);
+            formData.append('display_name', document.getElementById('display_name').value);
+            formData.append('age_years', document.getElementById('age_years').value);
+            formData.append('grade_level', document.getElementById('grade_level').value);
+            formData.append('classroom', document.getElementById('classroom').value);
+            formData.append('parental_consent', document.getElementById('parental_consent').checked);
+            formData.append('enrolled_by', document.getElementById('enrolled_by').value);
+
+            selectedFiles.forEach(file => {
+                formData.append('photos', file);
+            });
+
+            // Show loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('submitBtn').disabled = true;
+            hideAlert();
+
+            try {
+                const response = await fetch(`${API_URL}/api/persons/enroll`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert(`✓ Successfully enrolled ${data.full_name}!`, 'success');
+                    setTimeout(() => resetForm(), 2000);
+                } else {
+                    showAlert(`✗ Enrollment failed: ${data.detail}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`✗ Error: ${error.message}. Make sure the API is running on port 8002.`, 'error');
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type} show`;
+        }
+
+        function hideAlert() {
+            const alert = document.getElementById('alert');
+            alert.classList.remove('show');
+        }
+
+        function resetForm() {
+            document.getElementById('enrollmentForm').reset();
+            selectedFiles = [];
+            photoPreviews.innerHTML = '';
+            hideAlert();
+        }
+    </script>
+</body>
+</html>
