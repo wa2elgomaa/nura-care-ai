@@ -50,6 +50,8 @@ class ViolationAlert:
     vlm_result: Optional[str] = None
     processing_time_ms: float = 0.0
     immediate_action_required: bool = False
+    # Phase 4: Person tracking context
+    persons_involved: Optional[list] = None  # List of person IDs involved in violation
 
 
 class HybridRouter:
@@ -81,10 +83,12 @@ class HybridRouter:
         self.body_language_detector = None
         self.pose_detector = None  # ML-based pose detector (Phase 2)
         self.temporal_detector = None  # Temporal sequence detector (Phase 3)
+        self.person_tracker = None  # Person tracking (Phase 4)
 
         # Frame buffer for temporal analysis (per camera)
         self.frame_buffers = {}  # camera_id -> list of frames
         self.enable_temporal = os.getenv('ENABLE_TEMPORAL_DETECTION', 'false').lower() == 'true'
+        self.enable_person_tracking = os.getenv('ENABLE_PERSON_TRACKING', 'false').lower() == 'true'
 
     def _init_detectors(self):
         """Lazy-load detectors on first use"""
@@ -117,26 +121,61 @@ class HybridRouter:
                 self.pose_detector = None
 
             # Try to load temporal sequence detector (Phase 3)
+            # Uses factory to support multiple model types via .env configuration
             if self.enable_temporal:
                 try:
-                    from nura_detectors import TemporalViolenceDetector
+                    from nura_detectors.temporal_detector_factory import create_temporal_detector
 
-                    # Check if we have a trained model
-                    model_path = os.getenv('TEMPORAL_MODEL_PATH', 'models/temporal_violence.h5')
-                    if os.path.exists(model_path):
-                        self.temporal_detector = TemporalViolenceDetector(
-                            sequence_length=int(os.getenv('TEMPORAL_SEQUENCE_LENGTH', '20')),
-                            model_path=model_path
-                        )
-                        logger.info(f"✓ Temporal detector initialized (model: {model_path})")
-                    else:
-                        logger.warning(f"Temporal model not found at {model_path}, temporal detection disabled")
-                        self.temporal_detector = None
+                    # Factory creates detector based on TEMPORAL_MODEL_TYPE env var
+                    # Supports: resnet50_gru, mvit, tsm, x3d
+                    # Reads configuration from .env:
+                    #   - TEMPORAL_MODEL_TYPE (default: resnet50_gru)
+                    #   - TEMPORAL_MODEL_PATH (auto-selected based on type)
+                    #   - TEMPORAL_DEVICE (default: cpu)
+                    model_type = os.getenv('TEMPORAL_MODEL_TYPE', 'resnet50_gru')
+                    device = os.getenv('TEMPORAL_DEVICE', 'cpu')
+
+                    logger.info(f"Loading temporal detector: type={model_type}, device={device}")
+                    self.temporal_detector = create_temporal_detector()
+
+                    logger.info(f"✓ Temporal detector initialized via factory ({model_type} on {device})")
                 except (ImportError, Exception) as temp_err:
                     logger.warning(f"Temporal detector unavailable: {temp_err}")
-                    self.temporal_detector = None
+                    logger.warning("Falling back to legacy TemporalViolenceDetector")
 
-            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose)")
+                    # Fallback to legacy direct import
+                    try:
+                        from nura_detectors import TemporalViolenceDetector
+
+                        model_path = os.getenv('TEMPORAL_MODEL_PATH', 'models/temporal_violence.keras')
+                        if os.path.exists(model_path):
+                            self.temporal_detector = TemporalViolenceDetector(
+                                sequence_length=int(os.getenv('TEMPORAL_SEQUENCE_LENGTH', '20')),
+                                model_path=model_path
+                            )
+                            logger.info(f"✓ Temporal detector initialized (legacy, model: {model_path})")
+                        else:
+                            logger.warning(f"Temporal model not found at {model_path}, temporal detection disabled")
+                            self.temporal_detector = None
+                    except Exception as fallback_err:
+                        logger.error(f"Temporal detector fallback failed: {fallback_err}")
+                        self.temporal_detector = None
+
+            # Try to load person tracker (Phase 4)
+            if self.enable_person_tracking:
+                try:
+                    from nura_detectors import PersonTracker
+
+                    # Configure tracker based on environment
+                    tracker_model = os.getenv('PERSON_TRACKER_MODEL', 'n')  # n=nano (fastest)
+                    self.person_tracker = PersonTracker(detector_model=tracker_model)
+
+                    logger.info(f"✓ Person tracker initialized (YOLOv8-{tracker_model} + ByteTrack)")
+                except (ImportError, Exception) as tracker_err:
+                    logger.warning(f"Person tracker unavailable: {tracker_err}")
+                    self.person_tracker = None
+
+            logger.info("✓ Fast-path detectors initialized (violence, distress, supervision, body_language, pose, person_tracking)")
         except (ImportError, Exception) as e:
             logger.warning(f"Fast-path detectors not available: {e}")
             logger.warning("Will fall back to VLM-only mode")
@@ -166,7 +205,13 @@ class HybridRouter:
         # Lazy-init detectors on first use
         self._init_detectors()
 
-        # Step 0: Add frame to temporal buffer (if enabled)
+        # Step 0A: Track persons in frame (if enabled)
+        person_tracks = []
+        if self.person_tracker:
+            person_tracks = self.person_tracker.update(frame)
+            logger.info(f"Person tracking: {len(person_tracks)} people tracked")
+
+        # Step 0B: Add frame to temporal buffer (if enabled)
         temporal_result = None
         if self.temporal_detector and camera_id:
             temporal_ready = self.temporal_detector.add_frame(frame)
@@ -177,7 +222,7 @@ class HybridRouter:
 
         # Step 1: Run fast-path detectors (if available)
         if self._fast_path_available():
-            fast_path_results = await self._run_fast_path(frame)
+            fast_path_results = await self._run_fast_path(frame, person_tracks)
 
             # Incorporate temporal result if available
             if temporal_result:
@@ -187,6 +232,13 @@ class HybridRouter:
                     "probability": temporal_result.violence_probability,
                     "sequence_length": temporal_result.sequence_length,
                     "details": temporal_result.details
+                }
+
+            # Incorporate person tracking results
+            if person_tracks:
+                fast_path_results["person_tracking"] = {
+                    "num_people": len(person_tracks),
+                    "tracks": person_tracks
                 }
 
             decision = self._make_routing_decision(fast_path_results)
@@ -267,14 +319,19 @@ class HybridRouter:
             self.body_language_detector is not None
         )
 
-    async def _run_fast_path(self, frame: np.ndarray) -> Dict:
+    async def _run_fast_path(self, frame: np.ndarray, person_tracks: list = None) -> Dict:
         """
         Run all fast-path detectors in parallel
+        Optionally runs per-person detection if person_tracks provided
+
+        Args:
+            frame: Full frame
+            person_tracks: List of person tracks from PersonTracker
 
         Returns:
             Dict with results from all detectors
         """
-        # Run detectors (these are CPU-bound, but fast <100ms total)
+        # Run whole-frame detectors (these are CPU-bound, but fast <100ms total)
         violence_result = self.violence_detector.detect(frame)
         distress_result = self.distress_detector.detect(frame)
         supervision_result = self.supervision_detector.detect(frame)
@@ -285,6 +342,57 @@ class HybridRouter:
         else:
             body_language_result = self.body_language_detector.detect(frame)
 
+        # Per-person temporal detection (if tracking enabled and temporal detector available)
+        per_person_results = []
+        persons_involved = []
+
+        if person_tracks and self.temporal_detector:
+            from nura_detectors import PersonAction
+            from datetime import datetime
+
+            for track in person_tracks:
+                person_id = track['id']
+                bbox = track['bbox']
+
+                # Crop person ROI
+                x1, y1, x2, y2 = [int(v) for v in bbox]
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+
+                if x2 > x1 and y2 > y1:
+                    person_roi = frame[y1:y2, x1:x2]
+
+                    # Run temporal detection on person ROI
+                    # Note: This creates a separate buffer per person
+                    # TODO: Optimize by maintaining per-person frame buffers
+                    person_temporal_ready = self.temporal_detector.add_frame(person_roi)
+
+                    if person_temporal_ready:
+                        person_detection = self.temporal_detector.detect(ready_for_inference=True)
+
+                        per_person_results.append({
+                            'person_id': person_id,
+                            'bbox': bbox,
+                            'detection': asdict(person_detection)
+                        })
+
+                        # Track person's action in history
+                        if person_detection.violence_detected:
+                            persons_involved.append(person_id)
+
+                            self.person_tracker.update_person_action(
+                                person_id=person_id,
+                                action=PersonAction(
+                                    timestamp=datetime.now(),
+                                    action_type='violence',
+                                    confidence=person_detection.confidence,
+                                    bbox=bbox,
+                                    details=person_detection.details
+                                )
+                            )
+
+                            logger.info(f"Person {person_id} involved in violence (conf={person_detection.confidence:.2f})")
+
         # Log detector scores for debugging
         logger.info(
             f"Fast-path scores: "
@@ -294,12 +402,22 @@ class HybridRouter:
             f"body_language={body_language_result.power_imbalance_score:.2f} (intimidation={body_language_result.intimidation_detected})"
         )
 
-        return {
+        if per_person_results:
+            logger.info(f"Per-person detections: {len(per_person_results)} people analyzed")
+
+        results = {
             "violence": asdict(violence_result),
             "distress": asdict(distress_result),
             "supervision": asdict(supervision_result),
             "body_language": asdict(body_language_result)
         }
+
+        # Add per-person results and involved persons
+        if per_person_results:
+            results["per_person"] = per_person_results
+            results["persons_involved"] = persons_involved
+
+        return results
 
     def _make_routing_decision(self, fast_path_results: Dict) -> Dict:
         """
@@ -476,6 +594,9 @@ class HybridRouter:
         detector_key = detector_key_map.get(violation_type, violation_type)
         result = fast_path_results.get(detector_key, {})
 
+        # Extract persons involved (Phase 4)
+        persons_involved = fast_path_results.get("persons_involved", [])
+
         return ViolationAlert(
             violation_detected=True,
             violation_type=violation_type,
@@ -484,6 +605,7 @@ class HybridRouter:
             source=DetectionSource.FAST_PATH.value,
             details=result.get("details", "Fast-path detection"),
             fast_path_results=fast_path_results,
+            persons_involved=persons_involved if persons_involved else None,
             immediate_action_required=(
                 result.get("severity") == "high" or
                 result.get("immediate_attention_needed", False)
@@ -502,6 +624,9 @@ class HybridRouter:
         # Parse VLM verdict to check if it confirmed or rejected the fast-path detection
         vlm_confirmed = self._parse_vlm_verdict(vlm_result, violation_type)
 
+        # Extract persons involved (Phase 4)
+        persons_involved = fast_path_results.get("persons_involved", [])
+
         # If VLM says no violation, trust it over fast-path
         if not vlm_confirmed:
             return ViolationAlert(
@@ -513,6 +638,7 @@ class HybridRouter:
                 details=f"Fast-path detected {violation_type}, but VLM rejected it as false positive",
                 fast_path_results=fast_path_results,
                 vlm_result=vlm_result,
+                persons_involved=persons_involved if persons_involved else None,
                 immediate_action_required=False
             )
 
@@ -526,6 +652,7 @@ class HybridRouter:
             details=f"Fast-path + VLM validation: {violation_type}",
             fast_path_results=fast_path_results,
             vlm_result=vlm_result,
+            persons_involved=persons_involved if persons_involved else None,
             immediate_action_required=False  # VLM validation means not immediate
         )
 

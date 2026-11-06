@@ -8,6 +8,14 @@ from .supervision_detector import SupervisionDetector, SupervisionDetection
 from .body_language_detector import BodyLanguageDetector, BodyLanguageDetection
 from .pose_detector import PoseBodyLanguageDetector, PoseDetection
 from .temporal_detector import TemporalViolenceDetector, TemporalDetection
+from .person_tracker import (
+    PersonTracker,
+    PersonDetector,
+    ByteTracker,
+    PersonHistoryTracker,
+    PersonAction,
+    Track
+)
 
 __all__ = [
     "ViolenceDetector",
@@ -22,4 +30,11 @@ __all__ = [
     "PoseDetection",
     "TemporalViolenceDetector",
     "TemporalDetection",
+    # Phase 4: Person Tracking
+    "PersonTracker",
+    "PersonDetector",
+    "ByteTracker",
+    "PersonHistoryTracker",
+    "PersonAction",
+    "Track",
 ]
