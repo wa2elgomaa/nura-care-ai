@@ -7,7 +7,15 @@ from .distress_detector import DistressDetector, DistressDetection
 from .supervision_detector import SupervisionDetector, SupervisionDetection
 from .body_language_detector import BodyLanguageDetector, BodyLanguageDetection
 from .pose_detector import PoseBodyLanguageDetector, PoseDetection
-from .temporal_detector import TemporalViolenceDetector, TemporalDetection
+
+# Lazy import for temporal detector (requires TensorFlow - optional dependency)
+try:
+    from .temporal_detector import TemporalViolenceDetector, TemporalDetection
+except ImportError:
+    # TensorFlow not available - temporal detector unavailable
+    TemporalViolenceDetector = None
+    TemporalDetection = None
+
 from .person_tracker import (
     PersonTracker,
     PersonDetector,

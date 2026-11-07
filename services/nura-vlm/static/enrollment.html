@@ -347,11 +347,11 @@
 
             <!-- Photo Upload -->
             <div class="form-group">
-                <label>Face Photos (2-5 photos) <span class="required">*</span></label>
+                <label>Face Photos (1-5 photos) <span class="required">*</span></label>
                 <div class="photo-upload" id="photoUpload">
                     <div class="photo-upload-icon">📸</div>
                     <div class="photo-upload-text">Click to upload or drag and drop</div>
-                    <div class="photo-upload-hint">Upload 2-5 photos from different angles</div>
+                    <div class="photo-upload-hint">Upload 1-5 photos. Single photo will be auto-augmented for better recognition.</div>
                 </div>
                 <input type="file" id="photos" name="photos" accept="image/*" multiple>
                 <div id="photoPreviews" class="photo-previews"></div>
@@ -421,8 +421,8 @@
 
             if (selectedFiles.length > 5) {
                 showAlert('Maximum 5 photos allowed. Using first 5.', 'warning');
-            } else if (selectedFiles.length < 2) {
-                showAlert(`${selectedFiles.length} photo selected. Please select at least 2 photos total.`, 'warning');
+            } else if (selectedFiles.length === 1) {
+                showAlert(`1 photo selected. Will be auto-augmented to 5 variations for better recognition.`, 'success');
             } else {
                 showAlert(`${selectedFiles.length} photos selected. Ready to enroll!`, 'success');
             }
@@ -464,8 +464,8 @@
         document.getElementById('enrollmentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            if (selectedFiles.length < 2) {
-                showAlert('Please upload at least 2 photos', 'error');
+            if (selectedFiles.length < 1) {
+                showAlert('Please upload at least 1 photo', 'error');
                 return;
             }
 

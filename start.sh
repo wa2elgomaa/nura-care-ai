@@ -156,6 +156,14 @@ if [ ! -d "services/nura-vlm/.venv" ]; then
     pip install -q --upgrade pip setuptools wheel
     pip install -q -r requirements.local.txt
 
+    # Install nura-detectors package (required for enrollment API)
+    echo -e "${YELLOW}Installing nura-detectors package...${NC}"
+    pip install -q -e ../../packages/nura-detectors
+
+    # Fix dependency versions for TensorFlow + InsightFace compatibility
+    pip install -q "numpy==1.26.4" "protobuf==4.25.5" "ml-dtypes==0.2.0" "onnxruntime==1.16.3" "onnx==1.15.0"
+    echo -e "${GREEN}✓ nura-detectors installed${NC}"
+
     # Install Phase 4B dependencies (Face Recognition)
     echo -e "${YELLOW}Installing Phase 4B dependencies (Face Recognition)...${NC}"
 
@@ -207,6 +215,32 @@ else
     cd services/nura-vlm
     source .venv/bin/activate
 
+    # Check for nura-detectors package
+    if ! python -c "import nura_detectors" 2>/dev/null; then
+        echo -e "${YELLOW}Installing nura-detectors package...${NC}"
+        pip install -q -e ../../packages/nura-detectors
+
+        # Fix dependency versions for TensorFlow + InsightFace compatibility
+        pip install -q "numpy==1.26.4" "protobuf==4.25.5" "ml-dtypes==0.2.0" "onnxruntime==1.16.3" "onnx==1.15.0"
+        echo -e "${GREEN}✓ nura-detectors installed${NC}"
+    fi
+
+    # Check for enrollment API dependencies (psycopg2, fastapi, etc.)
+    MISSING_DEPS=false
+    if ! python -c "import psycopg2" 2>/dev/null; then
+        MISSING_DEPS=true
+    fi
+    if ! python -c "import fastapi" 2>/dev/null; then
+        MISSING_DEPS=true
+    fi
+
+    if [ "$MISSING_DEPS" = true ]; then
+        echo -e "${YELLOW}Installing enrollment API dependencies...${NC}"
+        pip install -q psycopg2-binary fastapi uvicorn python-multipart
+        echo -e "${GREEN}✓ Enrollment API dependencies installed${NC}"
+    fi
+
+    # Check for face recognition backend
     if ! python -c "import insightface" 2>/dev/null && ! python -c "import face_recognition" 2>/dev/null; then
         echo -e "${YELLOW}Face recognition backend not detected${NC}"
         echo -e "${YELLOW}Installing Phase 4B dependencies...${NC}"
@@ -295,8 +329,15 @@ if wait_for_service "http://localhost:8001/health" "VLM Service"; then
         # Start enrollment API in background
         echo -e "${YELLOW}Starting enrollment API on port $ENROLLMENT_PORT...${NC}"
         cd services/nura-vlm
-        source .venv/bin/activate
-        nohup python -u src/enrollment_api.py > ../../logs/enrollment-api.log 2>&1 &
+        # Use venv Python directly (nohup doesn't inherit 'source' activation)
+        # Pass environment variables explicitly to ensure they reach the Python process
+        env POSTGRES_HOST="${POSTGRES_HOST:-localhost}" \
+            POSTGRES_PORT="${POSTGRES_PORT:-5432}" \
+            POSTGRES_DB="${POSTGRES_DB:-nura_db}" \
+            POSTGRES_USER="${POSTGRES_USER:-nura}" \
+            POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+            FACE_RECOGNITION_BACKEND="${FACE_RECOGNITION_BACKEND:-insightface}" \
+            nohup .venv/bin/python -m uvicorn src.enrollment_api:app --host 0.0.0.0 --port $ENROLLMENT_PORT --log-level info > ../../logs/enrollment-api.log 2>&1 &
         ENROLLMENT_PID=$!
         echo $ENROLLMENT_PID > ../../.enrollment.pid
         cd "$PROJECT_ROOT"

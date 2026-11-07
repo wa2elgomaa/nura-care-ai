@@ -30,6 +30,85 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# Face Augmentation Utilities
+# ============================================================================
+
+def augment_face_image(image: np.ndarray, num_variations: int = 4) -> List[np.ndarray]:
+    """
+    Generate clean augmented versions of a single face photo for enrollment.
+
+    Uses simple, artifact-free transformations that help face recognition
+    without introducing distortions. InsightFace is already pose-invariant,
+    so we focus on clean variations rather than fake 3D poses.
+
+    Args:
+        image: Original face photo (numpy array)
+        num_variations: Number of augmented versions to create (default 4)
+
+    Returns:
+        List of augmented images including the original (total: num_variations + 1)
+
+    Augmentation techniques (clean & artifact-free):
+        1. Original image (frontal photo)
+        2. Horizontal flip (real mirror - helps with left/right variations)
+        3. Brightness increase (+20%) - simulates better lighting
+        4. Brightness decrease (-15%) - simulates lower lighting
+        5. Slight rotation (+12°) - natural head tilt variation
+    """
+    augmented = [image.copy()]  # Start with original
+
+    h, w = image.shape[:2]
+    center = (w // 2, h // 2)
+
+    # 1. Horizontal flip (mirror image)
+    # This is the most valuable augmentation - creates a natural variation
+    if len(augmented) < num_variations + 1:
+        flipped = cv2.flip(image, 1)
+        augmented.append(flipped)
+
+    # 2. Brightness increase (+20%)
+    # Simulates better lighting conditions
+    if len(augmented) < num_variations + 1:
+        bright = cv2.convertScaleAbs(image, alpha=1.2, beta=15)
+        augmented.append(bright)
+
+    # 3. Brightness decrease (-15%)
+    # Simulates lower lighting conditions
+    if len(augmented) < num_variations + 1:
+        dark = cv2.convertScaleAbs(image, alpha=0.85, beta=-10)
+        augmented.append(dark)
+
+    # 4. Slight rotation (+12 degrees)
+    # Natural head tilt - kept subtle to avoid distortion
+    if len(augmented) < num_variations + 1:
+        rotation_matrix = cv2.getRotationMatrix2D(center, 12, 1.0)
+        rotated = cv2.warpAffine(image, rotation_matrix, (w, h),
+                                borderMode=cv2.BORDER_REPLICATE)
+        augmented.append(rotated)
+
+    # 5. Slight rotation (-12 degrees)
+    # Natural head tilt opposite direction
+    if len(augmented) < num_variations + 1:
+        rotation_matrix = cv2.getRotationMatrix2D(center, -12, 1.0)
+        rotated = cv2.warpAffine(image, rotation_matrix, (w, h),
+                                borderMode=cv2.BORDER_REPLICATE)
+        augmented.append(rotated)
+
+    # 6. CLAHE contrast enhancement
+    # Improves feature extraction in varying lighting
+    if len(augmented) < num_variations + 1:
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+        augmented.append(enhanced)
+
+    return augmented[:num_variations + 1]
+
+
 @dataclass
 class FaceIdentity:
     """Face identification result"""
@@ -129,6 +208,12 @@ class FaceIdentifier:
         except ImportError:
             logger.error("InsightFace not installed. Install: pip install insightface onnxruntime")
             raise
+        except Exception as e:
+            logger.error(f"Failed to initialize InsightFace: {e}")
+            logger.info("Falling back to face_recognition backend")
+            # Fall back to face_recognition
+            self.backend = "face_recognition"
+            self._init_face_recognition()
 
     def _init_deepface(self):
         """Initialize DeepFace backend"""
@@ -450,6 +535,9 @@ class FaceIdentifier:
         if self.db:
             try:
                 cursor = self.db.cursor()
+                # Convert embedding to list for pgvector
+                embedding_list = avg_embedding.tolist()
+
                 cursor.execute("""
                     INSERT INTO enrolled_persons
                     (person_id, full_name, display_name, face_embedding, face_embedding_model, active)
@@ -461,7 +549,7 @@ class FaceIdentifier:
                     person_id,
                     full_name,
                     display_name,
-                    avg_embedding.tobytes(),
+                    embedding_list,
                     self.model_name,
                     True
                 ))

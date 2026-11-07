@@ -147,28 +147,50 @@ async def save_upload_file(upload_file: UploadFile, destination: Path) -> Path:
 
 
 def load_face_identifier():
-    """Load FaceIdentifier (lazy initialization)"""
+    """Load FaceIdentifier (lazy initialization) - optional database"""
     global _face_identifier
 
     if '_face_identifier' not in globals():
         from nura_detectors import FaceIdentifier
 
-        # Get database connection
-        db_conn = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
-            port=os.getenv("POSTGRES_PORT", "5432"),
-            database=os.getenv("POSTGRES_DB", "nura_db"),
-            user=os.getenv("POSTGRES_USER", "nura"),
-            password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!")
-        )
+        # Try to get database connection (optional)
+        db_conn = None
+        try:
+            db_conn = psycopg2.connect(
+                host=os.getenv("POSTGRES_HOST", "localhost"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB", "nura_db"),
+                user=os.getenv("POSTGRES_USER", "nura"),
+                password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!"),
+                connect_timeout=3
+            )
+            logger.info("✓ Database connection established")
+        except Exception as e:
+            logger.warning(f"Database unavailable: {e}")
+            logger.warning("Running in DEMO MODE - enrollments will be in-memory only")
 
+        # Try InsightFace first, fall back to face_recognition if it fails
         backend = os.getenv("FACE_RECOGNITION_BACKEND", "insightface")
+        model_name = "buffalo_l"  # Use buffalo_l model (available in InsightFace v0.7)
 
-        _face_identifier = FaceIdentifier(
-            db_connection=db_conn,
-            backend=backend,
-            min_confidence=float(os.getenv("FACE_RECOGNITION_MIN_CONFIDENCE", "0.6"))
-        )
+        try:
+            _face_identifier = FaceIdentifier(
+                db_connection=db_conn,
+                backend=backend,
+                model_name=model_name,
+                min_confidence=float(os.getenv("FACE_RECOGNITION_MIN_CONFIDENCE", "0.6"))
+            )
+        except Exception as e:
+            if backend == "insightface":
+                logger.warning(f"InsightFace initialization failed: {e}")
+                logger.info("Trying face_recognition backend instead...")
+                _face_identifier = FaceIdentifier(
+                    db_connection=db_conn,
+                    backend="face_recognition",
+                    min_confidence=float(os.getenv("FACE_RECOGNITION_MIN_CONFIDENCE", "0.6"))
+                )
+            else:
+                raise
 
         logger.info(f"✓ FaceIdentifier loaded (backend={backend})")
 
@@ -210,9 +232,9 @@ async def enroll_person(
     Requires 2-5 photos of the person from different angles.
     """
     try:
-        # Validate input
-        if len(photos) < 2:
-            raise HTTPException(status_code=400, detail="At least 2 photos required")
+        # Validate input - now accepts 1-5 photos
+        if len(photos) < 1:
+            raise HTTPException(status_code=400, detail="At least 1 photo required")
 
         if len(photos) > 5:
             raise HTTPException(status_code=400, detail="Maximum 5 photos allowed")
@@ -255,6 +277,17 @@ async def enroll_person(
 
             enrollment_images.append(img)
 
+        # Auto-augment if only 1 photo provided (for ID card enrollment)
+        if len(enrollment_images) == 1:
+            logger.info(f"Single photo enrollment - generating 4 augmented variations for {person_id}")
+            from nura_detectors.face_identifier import augment_face_image
+
+            # Generate augmented versions
+            augmented_images = augment_face_image(enrollment_images[0], num_variations=4)
+            enrollment_images = augmented_images
+
+            logger.info(f"✓ Generated {len(enrollment_images)} total images (1 original + {len(enrollment_images)-1} augmented)")
+
         # Load FaceIdentifier
         identifier = load_face_identifier()
 
@@ -272,28 +305,40 @@ async def enroll_person(
         if not success:
             raise HTTPException(status_code=400, detail="Enrollment failed - no faces detected in photos")
 
-        # Update database with additional metadata
-        cursor.execute("""
-            UPDATE enrolled_persons
-            SET age_years = %s,
-                grade_level = %s,
-                classroom = %s,
-                parental_consent = %s,
-                enrolled_by = %s,
-                enrollment_photo_url = %s
-            WHERE person_id = %s
-        """, (age_years, grade_level, classroom, parental_consent, enrolled_by, saved_paths[0], person_id))
+        # Update database with additional metadata (if database available)
+        if db:
+            try:
+                cursor = db.cursor()
+                cursor.execute("""
+                    UPDATE enrolled_persons
+                    SET age_years = %s,
+                        grade_level = %s,
+                        classroom = %s,
+                        parental_consent = %s,
+                        enrolled_by = %s,
+                        enrollment_photo_url = %s
+                    WHERE person_id = %s
+                """, (age_years, grade_level, classroom, parental_consent, enrolled_by, saved_paths[0], person_id))
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to update database metadata: {e}")
 
-        db.commit()
+        # Determine actual number of images used (after augmentation)
+        actual_images_used = len(enrollment_images)
 
-        logger.info(f"✓ Enrolled {person_id} ({full_name}) with {len(photos)} photos")
+        logger.info(f"✓ Enrolled {person_id} ({full_name}) with {len(photos)} uploaded photo(s), processed {actual_images_used} images total")
+
+        message = f"Successfully enrolled {display_name or full_name}"
+        if len(photos) == 1 and actual_images_used > 1:
+            message += f" (1 photo auto-augmented to {actual_images_used} variations)"
 
         return {
             "success": True,
             "person_id": person_id,
             "full_name": full_name,
-            "photos_processed": len(photos),
-            "message": f"Successfully enrolled {display_name or full_name}"
+            "photos_uploaded": len(photos),
+            "photos_processed": actual_images_used,
+            "message": message
         }
 
     except HTTPException:
