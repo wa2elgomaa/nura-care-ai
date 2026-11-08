@@ -36,10 +36,10 @@ x-nura-stub: &nura-stub
   networks: [ core_net ]
 
 x-nura-env: &nura-env
-  DATABASE_URL: postgresql://${POSTGRES_USER:-nura}:${POSTGRES_PASSWORD}@postgres:5432/nura
-  NATS_URL: nats://nats:4222
-  MQTT_URL: mqtt://mosquitto:1883
-  OIDC_ISSUER: http://keycloak:8080/realms/nura
+  DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-nura}:${POSTGRES_PASSWORD}@postgres:5432/nura}
+  NATS_URL: ${NATS_URL:-nats://nats:4222}
+  MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+  OIDC_ISSUER: ${OIDC_ISSUER:-http://keycloak:8080/realms/nura}
   SITE_ID: ${SITE_ID:-dev-site-001}
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
@@ -101,6 +101,8 @@ services:
     volumes:
       - ./edge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
+    ports:
+      - "1883:1883" # MQTT port - needed for host network access
     networks: [ core_net, sensor_net ]
 
   nats:
@@ -109,6 +111,9 @@ services:
     command: [ "-js", "-sd", "/data", "-m", "8222" ]
     volumes:
       - nats_data:/data
+    ports:
+      - "4222:4222" # Client port - needed for host network access
+      - "8222:8222" # Monitoring port
     networks: [ core_net ]
 
   keycloak:
@@ -152,7 +157,47 @@ services:
   apprise:
     <<: *common
     image: caronc/apprise:${APPRISE_VERSION:-latest} # pin a version for real use
+    volumes:
+      - ./edge/apprise/apprise.yml:/templates/apprise.yml:ro
+    environment:
+      APPRISE_CONFIG_DIR: /config
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT}
+      MAIL_SMTP_USERNAME: ${MAIL_SMTP_USERNAME}
+      MAIL_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO}
+      TWILIO_SID: ${TWILIO_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER}
+      ALERT_SMS_TO: ${ALERT_SMS_TO}
+    # Render ${VAR} placeholders from env into /config/apprise.yml, then start normally
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /config && python3 -c "import os,re;t=open('/templates/apprise.yml').read();open('/config/apprise.yml','w').write(re.sub(r'\$\{(\w+)\}',lambda m:os.environ.get(m.group(1),''),t))" && exec /opt/apprise/webapp/supervisord-startup
     networks: [ core_net ]
+
+  mediamtx:
+    # RTSP/RTMP/WebRTC/HLS relay server - lightweight stream ingestion
+    <<: *common
+    image: bluenviron/mediamtx:${MEDIAMTX_VERSION:-latest}
+    environment:
+      MTX_PROTOCOLS: tcp
+      MTX_RTSPADDRESS: :8554
+      MTX_RTMPDISABLE: "false"
+      MTX_HLSDISABLE: "false"
+      MTX_WEBRTCDISABLE: "false"
+      MTX_LOGDESTINATIONS: stdout
+    volumes:
+      - ./edge/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8889:8889" # WebRTC
+      - "8888:8888" # HLS
+    networks: [ camera_net, core_net ]
 
   frigate:
     <<: *common
@@ -233,7 +278,7 @@ services:
       <<: *nura-env
       PORT: "3003"
       RAG_SERVICE_URL: http://nura-rag:3002
-      VLM_SERVICE_URL: http://nura-vlm:8001
+      VLM_SERVICE_URL: ${VLM_SERVICE_URL:-http://nura-vlm:8001}
       SUPERVISION_THRESHOLD_SECONDS: ${SUPERVISION_THRESHOLD_SECONDS:-30}
     depends_on:
       postgres:
@@ -242,6 +287,8 @@ services:
         condition: service_started
       nura-rag:
         condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3003:3003"
 
@@ -264,8 +311,70 @@ services:
     ports:
       - "3002:3002"
 
+  vlm-proxy:
+    # HTTP proxy to forward requests from Docker network to host VLM service
+    # Uses host.docker.internal with explicit IP for Docker Desktop for Mac
+    <<: *common
+    image: nginx:alpine
+    volumes:
+      - ./edge/vlm-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8002:8002"
+    networks: [ core_net ]
+
+  nura-stream-processor:
+    # MQTT to NATS bridge - processes Frigate events and forwards frames to AI pipeline
+    <<: *nura-stub
+    build:
+      context: ./services/nura-stream-processor
+    image: ${NURA_STREAM_PROCESSOR_IMAGE:-nura/stream-processor:dev}
+    environment:
+      <<: *nura-env
+      PORT: "3010"
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      FRIGATE_API: ${FRIGATE_API:-http://frigate:5000}
+      VLM_SERVICE_URL: ${VLM_SERVICE_URL:-http://nura-vlm:8001}
+      FRAME_PROCESSING_RATE: ${FRAME_PROCESSING_RATE:-1} # Process 1 FPS
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - mosquitto
+      - nats
+      - frigate
+    ports:
+      - "3010:3010"
+    networks: [ core_net ]
+
+  nura-alerts:
+    # Alert aggregation, severity classification, multi-channel routing
+    <<: *nura-stub
+    build:
+      context: ./services/nura-alerts
+    image: ${NURA_ALERTS_IMAGE:-nura/alerts:dev}
+    environment:
+      <<: *nura-env
+      PORT: "3011"
+      APPRISE_URL: ${APPRISE_URL:-http://apprise:8000}
+      NTFY_URL: ${NTFY_URL:-http://ntfy:80}
+      ALERT_AGGREGATION_WINDOW: ${ALERT_AGGREGATION_WINDOW:-30} # seconds
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      apprise:
+        condition: service_started
+    ports:
+      - "3011:3011"
+
   nura-notifier:
-    # severity routing, escalation, ack
+    # severity routing, escalation, ack (legacy - being replaced by nura-alerts)
     <<: *nura-stub
     image: ${NURA_NOTIFIER_IMAGE:-traefik/whoami}
     environment:
@@ -277,17 +386,20 @@ services:
     # Vision-Language Model for scene understanding
     <<: *nura-stub
     build:
-      context: ./services/nura-vlm
+      context: .
+      dockerfile: ./services/nura-vlm/Dockerfile.mac
     image: ${NURA_VLM_IMAGE:-nura/vlm:dev}
     environment:
       <<: *nura-env
-      OLLAMA_URL: http://ollama:11434
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       VLM_MODEL: ${VLM_MODEL:-llava:13b}
       VLM_TEMPERATURE: ${VLM_TEMPERATURE:-0.3}
       VLM_MAX_TOKENS: ${VLM_MAX_TOKENS:-500}
     depends_on:
       - ollama
       - nats
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8001:8001"
     networks: [ core_net ]

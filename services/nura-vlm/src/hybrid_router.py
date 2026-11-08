@@ -68,12 +68,27 @@ class HybridRouter:
     - Ambiguous cases → Always send to VLM
     """
 
-    def __init__(self, vlm_client=None):
+    def __init__(
+        self,
+        vlm_client=None,
+        vlm_url: Optional[str] = None,
+        enable_person_tracking: Optional[bool] = None,
+        enable_face_identification: Optional[bool] = None,
+        enable_temporal_detection: Optional[bool] = None,
+        db_connection=None
+    ):
         """
         Args:
             vlm_client: VLM client for complex analysis (optional, will lazy-load)
+            vlm_url: URL for VLM service (optional, for lazy-loading client)
+            enable_person_tracking: Override env var for person tracking
+            enable_face_identification: Override env var for face identification
+            enable_temporal_detection: Override env var for temporal detection
+            db_connection: Database connection for face identification (optional)
         """
         self.vlm_client = vlm_client
+        self.vlm_url = vlm_url or os.getenv('VLM_SERVICE_URL', 'http://localhost:8001')
+        self.db_connection = db_connection
 
         # Lazy-load detectors on first use
         self._detectors_initialized = False
@@ -88,9 +103,23 @@ class HybridRouter:
 
         # Frame buffer for temporal analysis (per camera)
         self.frame_buffers = {}  # camera_id -> list of frames
-        self.enable_temporal = os.getenv('ENABLE_TEMPORAL_DETECTION', 'false').lower() == 'true'
-        self.enable_person_tracking = os.getenv('ENABLE_PERSON_TRACKING', 'false').lower() == 'true'
-        self.enable_face_identification = os.getenv('ENABLE_FACE_IDENTIFICATION', 'false').lower() == 'true'
+
+        # Allow parameter overrides or use environment variables
+        self.enable_temporal = (
+            enable_temporal_detection
+            if enable_temporal_detection is not None
+            else os.getenv('ENABLE_TEMPORAL_DETECTION', 'false').lower() == 'true'
+        )
+        self.enable_person_tracking = (
+            enable_person_tracking
+            if enable_person_tracking is not None
+            else os.getenv('ENABLE_PERSON_TRACKING', 'false').lower() == 'true'
+        )
+        self.enable_face_identification = (
+            enable_face_identification
+            if enable_face_identification is not None
+            else os.getenv('ENABLE_FACE_IDENTIFICATION', 'false').lower() == 'true'
+        )
 
     def _init_detectors(self):
         """Lazy-load detectors on first use"""
@@ -589,8 +618,14 @@ class HybridRouter:
             VLM analysis string
         """
         if self.vlm_client is None:
-            logger.error("VLM client not initialized")
-            return "VLM unavailable"
+            # Try to lazy-load VLM client
+            try:
+                from src.vlm_client import VLMClient
+                self.vlm_client = VLMClient(base_url=self.vlm_url)
+                logger.info(f"Lazy-loaded VLM client with URL: {self.vlm_url}")
+            except Exception as e:
+                logger.error(f"VLM client not initialized and lazy-load failed: {e}")
+                return "VLM unavailable"
 
         # Import here to avoid circular dependency
         import base64

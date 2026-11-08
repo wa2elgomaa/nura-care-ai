@@ -24,6 +24,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Set environment variables before imports
+os.environ.setdefault('POSTGRES_PASSWORD', 'PaSSw0rd!')
+os.environ.setdefault('FACE_RECOGNITION_BACKEND', 'insightface')
+os.environ.setdefault('VLM_SERVICE_URL', 'http://localhost:8001')
+
 # Add paths
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'services' / 'nura-vlm' / 'src'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'packages' / 'nura-detectors' / 'src'))
@@ -78,7 +83,7 @@ def setup_test_database():
             port=os.getenv("POSTGRES_PORT", "5432"),
             database=os.getenv("POSTGRES_DB", "nura_db"),
             user=os.getenv("POSTGRES_USER", "nura"),
-            password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!")
+            password=os.getenv("POSTGRES_PASSWORD", "PaSSw0rd!")
         )
 
         cursor = conn.cursor()
@@ -211,8 +216,13 @@ async def test_hybrid_router():
     try:
         from hybrid_router import HybridRouter
 
-        # Initialize router (no VLM client for testing)
-        router = HybridRouter(vlm_client=None)
+        # Initialize router with VLM URL
+        router = HybridRouter(
+            vlm_url=os.getenv('VLM_SERVICE_URL', 'http://localhost:8001'),
+            enable_person_tracking=False,
+            enable_face_identification=False,
+            enable_temporal_detection=False
+        )
         print_success("HybridRouter initialized")
 
         # Check what's enabled
@@ -271,8 +281,13 @@ async def test_with_video(video_path):
         print_info(f"  Video: {video_path}")
         print_info(f"  FPS: {fps}, Frames: {total_frames}")
 
-        # Initialize router
-        router = HybridRouter(vlm_client=None)
+        # Initialize router with VLM URL
+        router = HybridRouter(
+            vlm_url=os.getenv('VLM_SERVICE_URL', 'http://localhost:8001'),
+            enable_person_tracking=True,
+            enable_face_identification=False,  # Skip to avoid model download
+            enable_temporal_detection=False
+        )
         print_success("Router initialized")
 
         # Process frames

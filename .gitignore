@@ -85,17 +85,29 @@ edge/frigate/*.db-shm
 edge/frigate/*.db-wal
 edge/frigate/go2rtc_homekit.yml
 
-test_results/
-
-# ML Models (too large for git, download separately)
-# YOLOv8: Auto-downloads on first use
-# Temporal RNN: Train with tools/training/train_temporal_detector.py
-# VLM: Pull via Ollama (ollama pull qwen3-vl:8b-instruct)
-models/
-*.pt
-*.h5
-*.onnx
-*.tflite
 *.pid
 # Test results
 test-results/
+
+# ============================================================================
+# Models - Downloaded via scripts/download-models.sh
+# ============================================================================
+# Exclude large trained models (downloaded from registry)
+models/*.keras
+models/*.h5
+models/*.pth
+models/*.onnx
+models/*.bin
+models/*.weights
+models/gguf/
+models/optimized/
+models/x3d/
+
+# BUT keep small files and metadata
+!models/model_registry.json
+!models/README.md
+!models/checksums.txt
+!models/yolov8n-pose.pt
+
+
+datasets/

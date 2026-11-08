@@ -1,0 +1,97 @@
+# Docker Compose for Production Edge Box Deployment
+# Usage: docker compose -f compose.yaml -f compose.prod.yml up -d
+#
+# Key differences from local development:
+# - VLM service runs in Docker with NVIDIA GPU (not natively)
+# - No proxy needed (VLM accessible via service name)
+# - No local-only services (keycloak, pgadmin, mediamtx, sync-agent)
+# - Real camera streams instead of video files
+# - Optimized resource limits
+
+services:
+  # ===========================================================================
+  # PRODUCTION OVERRIDES
+  # ===========================================================================
+
+  # VLM Service: Runs in Docker with NVIDIA GPU passthrough
+  nura-vlm:
+    # Use GPU-optimized Dockerfile
+    build:
+      context: .
+      dockerfile: ./services/nura-vlm/Dockerfile.gpu
+    image: ${NURA_VLM_IMAGE:-nura/vlm:prod}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      CUDA_VISIBLE_DEVICES: "0"
+    networks: [core_net]
+    # No host network needed - accessible via service name
+
+  # Stream Processor: Use service name for VLM (no proxy)
+  nura-stream-processor:
+    environment:
+      VLM_SERVICE_URL: http://nura-vlm:8001  # Direct Docker network access
+    # No network_mode: host needed
+
+  # Ollama: Run with GPU support
+  ollama:
+    image: ollama/ollama:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [core_net]
+    command: serve
+
+  # Frigate: Real camera configuration
+  frigate:
+    environment:
+      # Override to use hardware acceleration
+      FRIGATE_HWACCEL_ARGS: preset-nvidia-h264
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ===========================================================================
+  # DISABLED SERVICES (Local dev only)
+  # ===========================================================================
+
+  # These services don't run in production
+  vlm-proxy:
+    profiles: ["never"]
+
+  mediamtx:
+    profiles: ["never"]
+
+  sync-agent:
+    profiles: ["never"]
+
+# ===========================================================================
+# PRODUCTION VOLUMES
+# ===========================================================================
+volumes:
+  ollama_models:
+    driver: local
+  postgres_data:
+    driver: local
+  nats_data:
+    driver: local
+  mosquitto_data:
+    driver: local
+  frigate_media:
+    driver: local

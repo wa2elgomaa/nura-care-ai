@@ -1,0 +1,98 @@
+# Docker Compose Override for Local Development
+# This file is automatically merged with compose.yaml when running locally
+# Services here will ONLY run in local dev environment, not on production servers
+#
+# On the server, these services either:
+# - Don't exist (keycloak, pgadmin, etc.)
+# - Run natively on the host OS (VLM service with GPU)
+# - Are replaced by external services (cloud-sync-agent instead of sync-agent)
+
+services:
+  # ===========================================================================
+  # LOCAL DEVELOPMENT ONLY - Not needed on edge box server
+  # ===========================================================================
+
+  # Keycloak: OAuth/OIDC authentication server
+  # Server: Uses external auth or simplified auth
+  keycloak:
+    profiles: ["dev"]
+
+  # PgAdmin: Database management UI
+  # Server: Use psql CLI or remote DB client
+  pgadmin:
+    profiles: ["dev"]
+
+  # VLM Proxy: Bridges Docker network to host VLM service on Mac
+  # Server: VLM runs in Docker with GPU passthrough, no proxy needed
+  # NOTE: This MUST run locally - don't put in a profile
+  # vlm-proxy: (no override needed - runs by default from compose.yaml)
+
+  # Sync Agent: Syncs to mock cloud endpoint
+  # Server: Uses cloud-sync-agent that connects to real cloud API
+  sync-agent:
+    profiles: ["dev"]
+
+  # MediaMTX: RTSP server (local testing only with video files)
+  # Server: Real cameras publish directly to Frigate
+  mediamtx:
+    profiles: ["dev"]
+
+  # Ollama: LLM inference server
+  # Server: Runs in Docker with NVIDIA GPU
+  # Mac: Run NATIVE with ./runner/run_ollama.sh for Metal GPU (100x faster)
+  #      Set OLLAMA_URL=http://host.docker.internal:11434 in .env
+  # Docker option (CPU, slower):
+  ollama:
+    volumes:
+      - ~/.ollama:/root/.ollama  # Mount Mac's Ollama models
+    profiles: ["app"]
+
+  # Stream Processor - use VLM in Docker
+  # No override needed - uses default nura-vlm service
+
+  # ===========================================================================
+  # SERVICES THAT RUN DIFFERENTLY ON SERVER
+  # ===========================================================================
+
+  # VLM Service - Vision Language Model for AI analysis
+  # RECOMMENDED: Run NATIVE with ./runner/run_vlm_service.sh for Metal GPU
+  #              Set VLM_SERVICE_URL=http://host.docker.internal:8001 in .env
+  #              Docker containers CAN reach native services via host.docker.internal
+  # Docker option (CPU, slower for testing):
+  nura-vlm:
+    build:
+      context: .
+      dockerfile: ./services/nura-vlm/Dockerfile
+    environment:
+      PORT: "8001"
+      # OLLAMA_URL is inherited from .env
+      # For native Ollama: set OLLAMA_URL=http://host.docker.internal:11434
+      LOG_LEVEL: info
+    depends_on:
+      nats:
+        condition: service_started
+      # Remove ollama dependency if running native
+      # ollama:
+      #   condition: service_started
+    networks: [core_net]
+
+# ===========================================================================
+# NETWORK OVERRIDES for local development
+# ===========================================================================
+networks:
+  # core_net: Allow access to host for hybrid mode (native VLM + Docker)
+  # In production, this stays internal: true for security
+  core_net:
+    internal: false  # Allow containers to reach host.docker.internal
+
+# ===========================================================================
+# VOLUME OVERRIDES for local development
+# ===========================================================================
+volumes:
+  # Use named volumes for easier cleanup during development
+  postgres_data:
+    driver: local
+  nats_data:
+    driver: local
+  mosquitto_data:
+    driver: local

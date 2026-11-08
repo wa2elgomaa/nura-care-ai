@@ -1,0 +1,74 @@
+# Apprise Configuration for Nura Alert Notifications
+# This file configures all notification channels (Email, SMS, Push, etc.)
+
+# NOTE: This is a TEMPLATE. ${VAR} placeholders are filled from .env by the
+# apprise container at startup (see compose.yaml). Do not hardcode secrets here.
+
+version: 1
+
+# ==============================================================================
+# EMAIL NOTIFICATIONS (SMTP via Hostinger)
+# ==============================================================================
+urls:
+  # SMTP Email Configuration
+  - mailtos://${MAIL_SMTP_USERNAME}:${MAIL_SMTP_PASSWORD}@${MAIL_SMTP_HOST}:${MAIL_SMTP_PORT}/?smtp=${MAIL_SMTP_HOST}&from=${MAIL_FROM_EMAIL}&name=Nura+Safety+Alerts&to=${ALERT_EMAIL_TO}&mode=ssl
+
+  # SMS via Twilio
+  - twilio://${TWILIO_SID}:${TWILIO_AUTH_TOKEN}@${TWILIO_FROM_NUMBER}/${ALERT_SMS_TO}
+
+# ==============================================================================
+# TAGS (for targeted notifications)
+# ==============================================================================
+# Tags allow selective notification routing:
+# - email: Send via SMTP
+# - sms: Send via Twilio SMS
+# - push: Send via ntfy
+# - all: Send to all channels
+
+# Email-only notifications (use tag: email)
+email:
+  - mailtos://${MAIL_SMTP_USERNAME}:${MAIL_SMTP_PASSWORD}@${MAIL_SMTP_HOST}:${MAIL_SMTP_PORT}/?smtp=${MAIL_SMTP_HOST}&from=${MAIL_FROM_EMAIL}&name=Nura+Safety+Alerts&to=${ALERT_EMAIL_TO}&mode=ssl
+
+# SMS-only notifications (use tag: sms)
+sms:
+  - twilio://${TWILIO_SID}:${TWILIO_AUTH_TOKEN}@${TWILIO_FROM_NUMBER}/${ALERT_SMS_TO}
+
+# ==============================================================================
+# USAGE EXAMPLES
+# ==============================================================================
+# From Alert Service:
+#
+# Send to all channels:
+#   POST http://apprise:8000/notify
+#   { "body": "Alert message", "title": "Violence Detected" }
+#
+# Send email only:
+#   POST http://apprise:8000/notify
+#   { "body": "Alert message", "title": "Violence Detected", "tag": "email" }
+#
+# Send SMS only:
+#   POST http://apprise:8000/notify
+#   { "body": "Alert message", "title": "Violence Detected", "tag": "sms" }
+#
+# ==============================================================================
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+# 1. Update phone numbers:
+#    - Replace +1234567890 with your actual Twilio phone number (from number)
+#    - Replace second +1234567890 with staff phone number (to number)
+#
+# 2. Update email recipients:
+#    - Replace staff@school.com with actual staff email address(es)
+#    - For multiple recipients, use comma-separated list: to=staff1@school.com,staff2@school.com
+#
+# 3. Test notifications:
+#    ./scripts/test-notifications.sh
+#
+# 4. Sensitive data:
+#    - This file contains credentials
+#    - Keep it secure
+#    - Don't commit to public repositories
+#    - Consider using environment variables in production
+# ==============================================================================

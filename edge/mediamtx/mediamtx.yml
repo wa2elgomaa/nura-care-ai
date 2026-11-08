@@ -1,0 +1,173 @@
+# MediaMTX Configuration
+# Lightweight RTSP/RTMP/WebRTC/HLS server for Nura Childcare
+# Handles camera stream ingestion and relay
+
+# Logging
+logLevel: info
+logDestinations: [stdout]
+logFile: ""
+
+# Global settings
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+udpMaxPayloadSize: 1472
+
+# Authentication (disabled for local development)
+authMethod: internal
+
+# ==============================================================================
+# RTSP Server (Primary camera ingestion protocol)
+# ==============================================================================
+rtspDisable: false
+protocols: [tcp]
+encryption: "no"
+rtspAddress: :8554
+rtspsAddress: :8322
+rtpAddress: :8000
+rtcpAddress: :8001
+
+# ==============================================================================
+# RTMP Server (Alternative ingestion for some cameras)
+# ==============================================================================
+rtmpDisable: false
+rtmpAddress: :1935
+rtmpEncryption: "no"
+rtmpsAddress: :1936
+
+# ==============================================================================
+# HLS Server (For dashboard live streaming)
+# ==============================================================================
+hlsDisable: false
+hlsAddress: :8888
+hlsEncryption: false
+hlsServerKey: server.key
+hlsServerCert: server.crt
+hlsAlwaysRemux: false
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 50M
+hlsAllowOrigin: "*"
+hlsTrustedProxies: []
+hlsDirectory: ""
+
+# ==============================================================================
+# WebRTC Server (Ultra-low latency for dashboard)
+# ==============================================================================
+webrtcDisable: false
+webrtcAddress: :8889
+webrtcEncryption: false
+webrtcServerKey: server.key
+webrtcServerCert: server.cert
+webrtcAllowOrigin: "*"
+webrtcTrustedProxies: []
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: true
+webrtcIPsFromInterfacesList: []
+webrtcAdditionalHosts: []
+webrtcICEServers2: []
+
+# ==============================================================================
+# SRT Server (Secure Reliable Transport - optional)
+# ==============================================================================
+# srtDisable: true  # Deprecated in newer versions
+
+# ==============================================================================
+# Recording (Disabled - using Frigate for this)
+# ==============================================================================
+record: false
+
+# ==============================================================================
+# Playback (Disabled - using Frigate for this)
+# ==============================================================================
+playback: false
+
+# ==============================================================================
+# Path Defaults (Applied to all streams unless overridden)
+# ==============================================================================
+pathDefaults:
+  # Source
+  source: publisher
+  sourceOnDemand: false
+  sourceOnDemandStartTimeout: 10s
+  sourceOnDemandCloseAfter: 10s
+
+  # Max readers (how many clients can watch one stream)
+  maxReaders: 10
+
+  # Recording disabled (Frigate handles this)
+  record: false
+
+  # Authentication
+  readUser: ""
+  readPass: ""
+  readIPs: []
+
+  publishUser: ""
+  publishPass: ""
+  publishIPs: []
+
+  # Overrides for specific protocols
+  overridePublisher: false
+  srtReadPassphrase: ""
+  srtPublishPassphrase: ""
+
+# ==============================================================================
+# Stream Paths (Camera definitions)
+# ==============================================================================
+# These can be dynamically created or statically defined
+# Format: path_name:
+#   source: rtsp://username:password@camera_ip/stream
+#   sourceProtocol: rtsp
+#   sourceOnDemand: yes/no
+
+paths:
+  # Test stream (for local development)
+  test:
+    source: publisher
+    sourceOnDemand: false
+    # Accessible at: rtsp://localhost:8554/test
+
+  # Classroom cameras (add your actual cameras here)
+  # Example:
+  # classroom_1:
+  #   source: rtsp://admin:password@192.168.1.101/stream
+  #   sourceProtocol: rtsp
+  #   sourceOnDemand: yes
+  #   runOnReady: ffmpeg -i rtsp://localhost:$RTSP_PORT/$MTX_PATH -c copy -f rtsp rtsp://frigate:8554/$MTX_PATH
+
+  # classroom_2:
+  #   source: rtsp://admin:password@192.168.1.102/stream
+  #   sourceProtocol: rtsp
+  #   sourceOnDemand: yes
+
+  # playground:
+  #   source: rtsp://admin:password@192.168.1.103/stream
+  #   sourceProtocol: rtsp
+  #   sourceOnDemand: yes
+
+# ==============================================================================
+# API Server (For management and monitoring)
+# ==============================================================================
+api: true
+apiAddress: :9997
+
+# ==============================================================================
+# Metrics (Prometheus-compatible)
+# ==============================================================================
+metrics: true
+metricsAddress: :9998
+
+# ==============================================================================
+# Performance Tuning
+# ==============================================================================
+# Read buffer size
+readBufferCount: 512
+
+# Run on ready/read/unready hooks
+# Example: restart Frigate when stream becomes available
+# runOnReady: curl -X POST http://frigate:5000/api/restart
+# runOnNotReady: curl -X POST http://frigate:5000/api/stop

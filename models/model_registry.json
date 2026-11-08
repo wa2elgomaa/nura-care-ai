@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-11-07",
+  "registry_url": "https://github.com/YOUR_ORG/nura-care-source/releases",
+  "models": {
+    "temporal_violence": {
+      "version": "1.2.0",
+      "filename": "temporal_violence.keras",
+      "download_url": "https://github.com/YOUR_ORG/nura-care-source/releases/download/models-v1.2.0/temporal_violence.keras",
+      "sha256": "PLACEHOLDER_UPDATE_AFTER_UPLOAD",
+      "size_mb": 1.2,
+      "required": true,
+      "architecture": "ResNet50 + GRU",
+      "input_shape": [20, 224, 224, 3],
+      "accuracy": {
+        "train": 0.9722,
+        "validation": 0.9583,
+        "test": 0.9550
+      },
+      "description": "Temporal violence detector trained on RWF-2000 dataset. Sequence-based detection (20 frames).",
+      "usage": "Set TEMPORAL_MODEL_PATH=models/temporal_violence.keras"
+    },
+    "distress_classifier": {
+      "version": "1.0.0",
+      "filename": "distress_classifier.keras",
+      "download_url": "https://github.com/YOUR_ORG/nura-care-source/releases/download/models-v1.0.0/distress_classifier.keras",
+      "sha256": "PLACEHOLDER_UPDATE_AFTER_UPLOAD",
+      "size_mb": 13,
+      "required": true,
+      "architecture": "CNN-based classifier",
+      "accuracy": {
+        "validation": 0.85
+      },
+      "description": "Distress detection classifier. Will be fine-tuned on Kinetics dataset.",
+      "usage": "Used by DistressDetector class",
+      "notes": "v2.0.0 in progress with Kinetics fine-tuning"
+    },
+    "yolov8n_pose": {
+      "version": "1.0.0",
+      "filename": "yolov8n-pose.pt",
+      "download_url": "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n-pose.pt",
+      "sha256": "PLACEHOLDER",
+      "size_mb": 6.5,
+      "required": true,
+      "description": "YOLOv8 Nano pose estimation model. Small enough to commit to Git.",
+      "usage": "Used by PoseBodyLanguageDetector",
+      "notes": "Can be committed directly to Git due to small size"
+    },
+    "mvit_violence": {
+      "version": "1.0.0",
+      "filename": "mvit_violence.pth",
+      "download_url": "https://github.com/YOUR_ORG/nura-models/releases/download/v1.0.0/mvit_violence.pth",
+      "sha256": "PLACEHOLDER_UPDATE_AFTER_UPLOAD",
+      "size_mb": 392,
+      "required": false,
+      "architecture": "MViT V2",
+      "accuracy": {
+        "validation": 0.9750
+      },
+      "description": "High-accuracy temporal violence detector. GPU recommended for inference.",
+      "usage": "Set TEMPORAL_MODEL_TYPE=mvit",
+      "notes": "Optional - only use if GPU available. ResNet50+GRU is faster on CPU."
+    }
+  },
+  "checksums_file": "models/checksums.txt",
+  "documentation": "models/README.md"
+}
