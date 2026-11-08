@@ -348,6 +348,25 @@ services:
       - "3010:3010"
     networks: [ core_net ]
 
+  nura-wifi-sensing:
+    # WiFi sensing service - RuView/ESP32 occupancy detection
+    <<: *nura-stub
+    build:
+      context: ./services/nura-wifi-sensing
+    image: ${NURA_WIFI_SENSING_IMAGE:-nura/wifi-sensing:dev}
+    environment:
+      <<: *nura-env
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      RUVIEW_TOPIC: ${RUVIEW_TOPIC:-ruview/occupancy/#}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      nats:
+        condition: service_started
+    networks: [ core_net ]
+
   nura-storage:
     # Centralized storage service for all file operations
     <<: *nura-stub

@@ -28,6 +28,10 @@ from .face_identifier import (
     FaceIdentifier,
     FaceIdentity
 )
+from .stranger_detector import (
+    StrangerDetector,
+    StrangerDetection
+)
 
 __all__ = [
     "ViolenceDetector",
@@ -52,4 +56,7 @@ __all__ = [
     # Phase 4B: Person Identification
     "FaceIdentifier",
     "FaceIdentity",
+    # Week 3: Stranger Detection
+    "StrangerDetector",
+    "StrangerDetection",
 ]

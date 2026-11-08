@@ -136,6 +136,14 @@ app = FastAPI(
 
 settings = Settings()
 
+# Include visitor management routes (Week 3)
+from src.visitor_api import router as visitor_router
+app.include_router(visitor_router)
+
+# Include guardian/parent management routes (Week 3+)
+from src.guardian_api import router as guardian_router
+app.include_router(guardian_router)
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
