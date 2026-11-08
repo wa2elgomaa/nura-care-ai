@@ -69,6 +69,7 @@ volumes:
   caddy_data:
   caddy_config:
   sync_state:
+  storage_data:  # Week 2: Centralized storage for clips, snapshots, exports
   cloud_data:
   ollama_models:
   cloud_pg_data:
@@ -347,6 +348,23 @@ services:
       - "3010:3010"
     networks: [ core_net ]
 
+  nura-storage:
+    # Centralized storage service for all file operations
+    <<: *nura-stub
+    build:
+      context: ./services/nura-storage
+    image: ${NURA_STORAGE_IMAGE:-nura/storage:dev}
+    environment:
+      <<: *nura-env
+      PORT: "3012"
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_BASE_DIR: ${STORAGE_BASE_DIR:-/data/storage}
+    volumes:
+      - storage_data:/data/storage
+    ports:
+      - "3012:3012"
+    networks: [ core_net ]
+
   nura-alerts:
     # Alert aggregation, severity classification, multi-channel routing
     <<: *nura-stub
@@ -363,12 +381,15 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      STORAGE_SERVICE_URL: ${STORAGE_SERVICE_URL:-http://nura-storage:3012}
     depends_on:
       postgres:
         condition: service_healthy
       nats:
         condition: service_started
       apprise:
+        condition: service_started
+      nura-storage:
         condition: service_started
     ports:
       - "3011:3011"

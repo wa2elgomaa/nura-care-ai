@@ -29,6 +29,8 @@ import psycopg2
 import cv2
 import numpy as np
 
+from storage_client import get_storage_client
+
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -135,15 +137,24 @@ class ConsentUpdate(BaseModel):
 # Helper Functions
 # ============================================================================
 
-async def save_upload_file(upload_file: UploadFile, destination: Path) -> Path:
-    """Save uploaded file to disk"""
-    destination.parent.mkdir(parents=True, exist_ok=True)
+async def save_upload_file(upload_file: UploadFile, filename: str, category: str = "enrollments") -> str:
+    """
+    Save uploaded file to storage service
 
-    with destination.open("wb") as buffer:
-        content = await upload_file.read()
-        buffer.write(content)
+    Args:
+        upload_file: FastAPI UploadFile
+        filename: Target filename
+        category: Storage category (default: enrollments)
 
-    return destination
+    Returns:
+        Storage path
+    """
+    storage_client = get_storage_client()
+
+    content = await upload_file.read()
+    result = await storage_client.save_file(content, category, filename)
+
+    return result['path']
 
 
 def load_face_identifier():
@@ -257,21 +268,23 @@ async def enroll_person(
             except:
                 pass
 
-        # Save uploaded photos
-        upload_dir = Path(os.getenv("UPLOAD_DIR", "/tmp/nura_uploads")) / person_id
-        upload_dir.mkdir(parents=True, exist_ok=True)
-
+        # Save uploaded photos to storage service
         enrollment_images = []
         saved_paths = []
 
         for i, photo in enumerate(photos):
-            # Save file
-            file_path = upload_dir / f"enrollment_{i}.jpg"
-            await save_upload_file(photo, file_path)
-            saved_paths.append(str(file_path))
+            # Save to storage service
+            filename = f"{person_id}_enrollment_{i}.jpg"
+            storage_path = await save_upload_file(photo, filename, "enrollments")
+            saved_paths.append(storage_path)
 
-            # Load image
-            img = cv2.imread(str(file_path))
+            # Read image from uploaded content (avoid reading from storage)
+            content = await photo.read()
+            await photo.seek(0)  # Reset for save_upload_file
+
+            nparr = np.frombuffer(content, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
             if img is None:
                 raise HTTPException(status_code=400, detail=f"Invalid image: {photo.filename}")
 

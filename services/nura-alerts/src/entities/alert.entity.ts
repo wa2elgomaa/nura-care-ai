@@ -53,6 +53,16 @@ export class Alert {
   @Column({ type: 'jsonb', nullable: true })
   metadata: any;
 
+  // Week 1: Person identification and context
+  @Column({ type: 'jsonb', nullable: true })
+  personsInvolved: any[]; // Array of PersonInAlert objects
+
+  @Column({ type: 'jsonb', nullable: true })
+  context: any; // AlertContext object
+
+  @Column({ type: 'jsonb', nullable: true })
+  evidence: any; // Evidence URLs (snapshot, clip, etc)
+
   @Column({ nullable: true })
   hash: string; // For deduplication
 

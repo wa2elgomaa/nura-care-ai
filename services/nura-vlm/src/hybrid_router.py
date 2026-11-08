@@ -51,7 +51,9 @@ class ViolationAlert:
     processing_time_ms: float = 0.0
     immediate_action_required: bool = False
     # Phase 4: Person tracking context
-    persons_involved: Optional[list] = None  # List of person IDs involved in violation
+    persons_involved: Optional[list] = None  # List of person objects (Week 1 spec format)
+    # Week 1: Alert context
+    context: Optional[Dict] = None  # Detection method, scores, environment
 
 
 class HybridRouter:
@@ -687,21 +689,42 @@ class HybridRouter:
         detector_key = detector_key_map.get(violation_type, violation_type)
         result = fast_path_results.get(detector_key, {})
 
-        # Extract persons involved (Phase 4)
-        persons_involved = fast_path_results.get("persons_involved", [])
+        # Extract persons involved (Phase 4) - build full person objects for Week 1
+        person_ids_involved = fast_path_results.get("persons_involved", [])
+        persons_involved = []
 
         # Generate detailed alert message with person names (Phase 4B)
         details = result.get("details", "Fast-path detection")
-        if persons_involved and "person_tracking" in fast_path_results:
+        if person_ids_involved and "person_tracking" in fast_path_results:
             tracks = fast_path_results["person_tracking"].get("tracks", [])
 
-            # Map person IDs to names
+            # Map person IDs to full person objects
             person_names = []
-            for person_id in persons_involved:
+            for idx, person_id in enumerate(person_ids_involved):
                 track = next((t for t in tracks if t['id'] == person_id), None)
                 if track:
                     name = track.get('display_name', f"Person {person_id}")
+                    full_name = track.get('full_name', name)
                     person_names.append(name)
+
+                    # Determine role (child is default, will be updated from DB in alert service)
+                    role = "child"  # Default assumption
+                    if track.get('identity'):
+                        # If identified, role might be in person data
+                        role = "child"  # TODO: Get from enrolled_persons table
+                    else:
+                        role = "unknown"
+
+                    # Build person object matching Week 1 spec
+                    persons_involved.append({
+                        "person_id": track.get('identity') or f"unknown_{person_id}",
+                        "name": full_name,
+                        "role": role,
+                        "confidence": track.get('identity_confidence', 0.0),
+                        "image_url": "",  # Will be populated by alert service when face crops are saved
+                        "bbox": track.get('bbox', [0, 0, 0, 0]),
+                        "is_primary_subject": (idx == 0)  # First person is primary by default
+                    })
 
             if person_names:
                 if len(person_names) == 1:
@@ -710,6 +733,28 @@ class HybridRouter:
                     details = f"{violation_type.replace('_', ' ').title()}: {person_names[0]} and {person_names[1]} involved"
                 else:
                     details = f"{violation_type.replace('_', ' ').title()}: {', '.join(person_names[:-1])} and {person_names[-1]} involved"
+
+        # Build context (Week 1 spec)
+        detector_scores = {}
+        if "violence" in fast_path_results:
+            detector_scores["violence"] = fast_path_results["violence"].get("confidence", 0.0)
+        if "distress" in fast_path_results:
+            detector_scores["distress"] = fast_path_results["distress"].get("confidence", 0.0)
+        if "supervision" in fast_path_results:
+            detector_scores["supervision"] = fast_path_results["supervision"].get("confidence", 0.0)
+        if "body_language" in fast_path_results:
+            detector_scores["body_language"] = fast_path_results["body_language"].get("power_imbalance_score", 0.0)
+
+        context = {
+            "detection_method": "fast_path",
+            "detector_scores": detector_scores,
+            "environment": {
+                "time_of_day": self._get_time_of_day(),
+                "occupancy_count": len(persons_involved) if persons_involved else 0,
+                "adults_present": 0,  # TODO: Detect adults vs children
+                "children_present": len(persons_involved) if persons_involved else 0
+            }
+        }
 
         return ViolationAlert(
             violation_detected=True,
@@ -720,6 +765,7 @@ class HybridRouter:
             details=details,
             fast_path_results=fast_path_results,
             persons_involved=persons_involved if persons_involved else None,
+            context=context,
             immediate_action_required=(
                 result.get("severity") == "high" or
                 result.get("immediate_attention_needed", False)
@@ -738,8 +784,51 @@ class HybridRouter:
         # Parse VLM verdict to check if it confirmed or rejected the fast-path detection
         vlm_confirmed = self._parse_vlm_verdict(vlm_result, violation_type)
 
-        # Extract persons involved (Phase 4)
-        persons_involved = fast_path_results.get("persons_involved", [])
+        # Extract persons involved (Phase 4) - build full person objects for Week 1
+        person_ids_involved = fast_path_results.get("persons_involved", [])
+        persons_involved = []
+
+        if person_ids_involved and "person_tracking" in fast_path_results:
+            tracks = fast_path_results["person_tracking"].get("tracks", [])
+
+            for idx, person_id in enumerate(person_ids_involved):
+                track = next((t for t in tracks if t['id'] == person_id), None)
+                if track:
+                    full_name = track.get('full_name', track.get('display_name', f"Person {person_id}"))
+                    role = "unknown" if not track.get('identity') else "child"
+
+                    persons_involved.append({
+                        "person_id": track.get('identity') or f"unknown_{person_id}",
+                        "name": full_name,
+                        "role": role,
+                        "confidence": track.get('identity_confidence', 0.0),
+                        "image_url": "",
+                        "bbox": track.get('bbox', [0, 0, 0, 0]),
+                        "is_primary_subject": (idx == 0)
+                    })
+
+        # Build context (Week 1 spec)
+        detector_scores = {}
+        if "violence" in fast_path_results:
+            detector_scores["violence"] = fast_path_results["violence"].get("confidence", 0.0)
+        if "distress" in fast_path_results:
+            detector_scores["distress"] = fast_path_results["distress"].get("confidence", 0.0)
+        if "supervision" in fast_path_results:
+            detector_scores["supervision"] = fast_path_results["supervision"].get("confidence", 0.0)
+        if "body_language" in fast_path_results:
+            detector_scores["body_language"] = fast_path_results["body_language"].get("power_imbalance_score", 0.0)
+
+        context = {
+            "detection_method": "hybrid",
+            "detector_scores": detector_scores,
+            "vlm_analysis": vlm_result,
+            "environment": {
+                "time_of_day": self._get_time_of_day(),
+                "occupancy_count": len(persons_involved) if persons_involved else 0,
+                "adults_present": 0,
+                "children_present": len(persons_involved) if persons_involved else 0
+            }
+        }
 
         # If VLM says no violation, trust it over fast-path
         if not vlm_confirmed:
@@ -753,6 +842,7 @@ class HybridRouter:
                 fast_path_results=fast_path_results,
                 vlm_result=vlm_result,
                 persons_involved=persons_involved if persons_involved else None,
+                context=context,
                 immediate_action_required=False
             )
 
@@ -767,8 +857,22 @@ class HybridRouter:
             fast_path_results=fast_path_results,
             vlm_result=vlm_result,
             persons_involved=persons_involved if persons_involved else None,
+            context=context,
             immediate_action_required=False  # VLM validation means not immediate
         )
+
+    def _get_time_of_day(self) -> str:
+        """Get current time of day classification"""
+        from datetime import datetime
+        hour = datetime.now().hour
+        if 6 <= hour < 12:
+            return "morning"
+        elif 12 <= hour < 17:
+            return "afternoon"
+        elif 17 <= hour < 21:
+            return "evening"
+        else:
+            return "night"
 
     def _parse_vlm_verdict(self, vlm_result: str, violation_type: str) -> bool:
         """

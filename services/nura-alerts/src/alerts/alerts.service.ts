@@ -5,6 +5,7 @@ import { connect, NatsConnection, JSONCodec } from 'nats';
 import * as crypto from 'crypto';
 import { Alert, AlertSeverity, AlertStatus } from '../entities/alert.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ClipProcessingQueue } from '../entities/clip-processing-queue.entity';
 
 @Injectable()
 export class AlertsService implements OnModuleInit {
@@ -18,6 +19,8 @@ export class AlertsService implements OnModuleInit {
   constructor(
     @InjectRepository(Alert)
     private alertRepository: Repository<Alert>,
+    @InjectRepository(ClipProcessingQueue)
+    private clipQueueRepository: Repository<ClipProcessingQueue>,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -114,14 +117,38 @@ export class AlertsService implements OnModuleInit {
       metadata: violation,
       hash,
       status: AlertStatus.PENDING,
+      // Week 1: Person identification and context
+      personsInvolved: violation.persons_involved || null,
+      context: violation.context || null,
+      evidence: violation.evidence || null,
     });
 
     await this.alertRepository.save(alert);
     this.logger.log(`🚨 New alert created: ${alert.id} (${violation.violation_type})`);
 
+    // Week 2: Add to clip processing queue
+    await this.queueClipProcessing(alert, violation);
+
     // Send notification immediately for high/critical severity
     if (severity === AlertSeverity.HIGH || severity === AlertSeverity.CRITICAL) {
       await this.sendAlert(alert);
+    }
+  }
+
+  private async queueClipProcessing(alert: Alert, violation: any) {
+    try {
+      const clipJob = this.clipQueueRepository.create({
+        alertId: alert.id,
+        cameraId: violation.camera,
+        incidentTimestamp: alert.firstDetected,
+        beforeSeconds: parseInt(process.env.CLIP_BEFORE_SECONDS || '10', 10),
+        afterSeconds: parseInt(process.env.CLIP_AFTER_SECONDS || '20', 10),
+      });
+
+      await this.clipQueueRepository.save(clipJob);
+      this.logger.log(`📹 Queued clip processing for alert ${alert.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to queue clip processing: ${error.message}`);
     }
   }
 
