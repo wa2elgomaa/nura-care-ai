@@ -70,6 +70,7 @@ volumes:
   caddy_config:
   sync_state:
   storage_data:  # Week 2: Centralized storage for clips, snapshots, exports
+  redis_data:    # Week 4: Person location cache
   cloud_data:
   ollama_models:
   cloud_pg_data:
@@ -115,6 +116,22 @@ services:
     ports:
       - "4222:4222" # Client port - needed for host network access
       - "8222:8222" # Monitoring port
+    networks: [ core_net ]
+
+  redis:
+    # Week 4: Real-time location cache for person search
+    <<: *common
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks: [ core_net ]
 
   keycloak:

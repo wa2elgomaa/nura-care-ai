@@ -21,6 +21,9 @@ aiohttp==3.9.1
 # NATS for event publishing
 nats-py==2.6.0
 
+# Redis for location cache (Week 4)
+redis==5.0.1
+
 # Monitoring
 prometheus-client==0.19.0
 
