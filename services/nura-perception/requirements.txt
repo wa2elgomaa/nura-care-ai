@@ -10,8 +10,7 @@ ultralytics==8.1.0  # YOLO
 mediapipe==0.10.9   # Pose estimation
 
 # Tracking
-# Note: ByteTrack requires manual installation from GitHub
-# RUN: pip install git+https://github.com/ifzhang/ByteTrack.git
+boxmot==10.0.48  # ByteTrack and other multi-object trackers
 
 # NATS for event publishing
 nats-py==2.6.0

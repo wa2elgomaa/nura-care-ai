@@ -74,6 +74,7 @@ volumes:
   cloud_data:
   ollama_models:
   cloud_pg_data:
+  face_photos:   # Week 6: Face photos for nura-face service
 
 services:
   # ---------------------------------------------------------------------------
@@ -295,9 +296,13 @@ services:
     environment:
       <<: *nura-env
       PORT: "3003"
-      RAG_SERVICE_URL: http://nura-rag:3002
+      RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://nura-rag:3002}
       VLM_SERVICE_URL: ${VLM_SERVICE_URL:-http://nura-vlm:8001}
       SUPERVISION_THRESHOLD_SECONDS: ${SUPERVISION_THRESHOLD_SECONDS:-30}
+      CAPACITY_THRESHOLD_PERCENT: ${CAPACITY_THRESHOLD_PERCENT:-1.0}
+      RESTRICTED_AREA_THRESHOLD_SECONDS: ${RESTRICTED_AREA_THRESHOLD_SECONDS:-5}
+      RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD:-0.4}
+      RAG_TOP_K: ${RAG_TOP_K:-3}
     depends_on:
       postgres:
         condition: service_healthy
@@ -328,6 +333,59 @@ services:
         condition: service_started
     ports:
       - "3002:3002"
+
+  nura-face:
+    # dedicated face recognition service (Week 6)
+    <<: *nura-stub
+    build:
+      context: ./services/nura-face
+    image: ${NURA_FACE_IMAGE:-nura/face:dev}
+    environment:
+      <<: *nura-env
+      PORT: "8002"
+      FACE_RECOGNITION_MODEL: ${FACE_RECOGNITION_MODEL:-buffalo_l}
+      FACE_RECOGNITION_THRESHOLD: ${FACE_RECOGNITION_THRESHOLD:-0.6}
+      FACE_EMBEDDING_DIM: ${FACE_EMBEDDING_DIM:-512}
+      ENABLE_GPU: ${ENABLE_GPU:-false}
+      GPU_DEVICE_ID: ${GPU_DEVICE_ID:-0}
+      FACE_PHOTOS_PATH: ${FACE_PHOTOS_PATH:-/data/face-photos}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    volumes:
+      - face_photos:/data/face-photos
+
+  nura-perception:
+    # privacy-first detection: YOLO + ByteTrack + MediaPipe (Week 6)
+    <<: *nura-stub
+    build:
+      context: ./services/nura-perception
+    image: ${NURA_PERCEPTION_IMAGE:-nura/perception:dev}
+    environment:
+      <<: *nura-env
+      PORT: "8000"
+      YOLO_MODEL: ${YOLO_MODEL:-yolov8n.pt}
+      DETECTION_CONFIDENCE: ${DETECTION_CONFIDENCE:-0.5}
+      ENABLE_POSE_ESTIMATION: ${ENABLE_POSE_ESTIMATION:-true}
+      POSE_CONFIDENCE: ${POSE_CONFIDENCE:-0.5}
+      ENABLE_BYTETRACK: ${ENABLE_BYTETRACK:-true}
+      TRACK_BUFFER: ${TRACK_BUFFER:-30}
+      MATCH_THRESHOLD: ${MATCH_THRESHOLD:-0.8}
+      FALL_THRESHOLD: ${FALL_THRESHOLD:-0.7}
+      ACTIVITY_WINDOW_FRAMES: ${ACTIVITY_WINDOW_FRAMES:-30}
+      FRAME_SKIP: ${FRAME_SKIP:-2}
+      MAX_FPS: ${MAX_FPS:-15}
+      RTSP_BASE: ${RTSP_BASE:-rtsp://frigate:8554}
+      FRIGATE_API: ${FRIGATE_API:-http://frigate:5000}
+    depends_on:
+      nats:
+        condition: service_started
+      frigate:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
 
   vlm-proxy:
     # HTTP proxy to forward requests from Docker network to host VLM service

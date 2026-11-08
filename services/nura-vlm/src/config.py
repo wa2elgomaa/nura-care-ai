@@ -49,6 +49,9 @@ class Config(BaseSettings):
     )
     STORAGE_API_KEY: str = Field(default="", description="Storage service API key (optional)")
 
+    # ==================== NATS Configuration ====================
+    NATS_URL: str = Field(default="nats://nats:4222", description="NATS server URL")
+
     # ==================== Redis Configuration ====================
     REDIS_HOST: str = Field(default="localhost", description="Redis host")
     REDIS_PORT: int = Field(default=6379, ge=1, le=65535, description="Redis port")

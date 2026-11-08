@@ -240,8 +240,8 @@ export class ViolationsService implements OnModuleInit {
         body: JSON.stringify({
           event_context: context,
           category,
-          top_k: 3,
-          similarity_threshold: 0.7,
+          top_k: this.config.RAG_TOP_K,
+          similarity_threshold: this.config.RAG_SIMILARITY_THRESHOLD,
         }),
       });
 

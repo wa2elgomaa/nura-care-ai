@@ -37,9 +37,10 @@ logger = logging.getLogger(__name__)
     vlm_model: str = "qwen3-vl:8b-instruct"  # or "qwen3-vl:8b-instruct" or "moondream" or "qwen3-vl:8b-instruct"
     site_id: str = "dev-site-001"
     log_level: str = "info"
-# Global VLM client and hybrid router
+# Global VLM client, hybrid router, and NATS client
 vlm_client: Optional[OllamaVLMClient] = None
 hybrid_router: Optional[HybridRouter] = None
+nats_client: Optional[Any] = None
 
 
 class SceneAnalysisRequest(BaseModel):
@@ -103,7 +104,16 @@ async def lifespan(app: FastAPI):
     hybrid_router = HybridRouter(vlm_client=vlm_client)
     logger.info("✓ Hybrid router initialized (detectors will load on first request)")
 
-    # TODO: Initialize NATS connection for event publishing
+    # Initialize NATS connection for event publishing
+    global nats_client
+    try:
+        from nats.aio.client import Client as NATS
+        nats_client = NATS()
+        await nats_client.connect(config.NATS_URL)
+        logger.info(f"✓ NATS connected: {config.NATS_URL}")
+    except Exception as e:
+        logger.warning(f"Failed to connect to NATS: {e}")
+        nats_client = None
 
     logger.info("VLM service started successfully")
 
@@ -112,6 +122,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down NURA VLM Service...")
     if vlm_client:
         await vlm_client.close()
+    if nats_client:
+        await nats_client.close()
     logger.info("Shutdown complete")
 
 
@@ -227,7 +239,44 @@ async def analyze_scene(request: SceneAnalysisRequest):
         logger.info(f"Analysis complete in {inference_time_ms}ms")
         logger.debug(f"Parsed results: {result['parsed']}")
 
-        # TODO: Publish to NATS (FR-010)
+        # Publish VLM analysis event to NATS (FR-010)
+        if nats_client:
+            try:
+                import json
+                from datetime import datetime
+
+                # Build detection event
+                detection_event = {
+                    "camera_id": request.camera_id or "unknown",
+                    "timestamp": request.timestamp or datetime.utcnow().isoformat(),
+                    "event_type": "no_adults_detected" if not result["parsed"].get("adults_detected") else "normal",
+                    "adults_detected": 0 if not result["parsed"].get("adults_detected") else 1,
+                    "children_detected": result["parsed"].get("count", 0),
+                    "confidence": 0.85,
+                    "metadata": {}
+                }
+
+                vlm_analysis = {
+                    "analysis": result["raw_response"] or "No response",
+                    "adults_detected": result["parsed"].get("adults_detected", False),
+                    "children_count": result["parsed"].get("count", 0),
+                    "safety_concern": result["parsed"].get("safety_concern", False),
+                    "confidence": 0.85
+                }
+
+                # Publish to nura.events.vlm_analysis
+                payload = {
+                    "detection": detection_event,
+                    "analysis": vlm_analysis
+                }
+
+                await nats_client.publish(
+                    "nura.events.vlm_analysis",
+                    json.dumps(payload).encode()
+                )
+                logger.debug(f"Published VLM analysis to NATS: {request.camera_id}")
+            except Exception as e:
+                logger.error(f"Failed to publish to NATS: {e}")
 
         response = SceneAnalysisResponse(
             analysis=result["raw_response"] or "No response from VLM",

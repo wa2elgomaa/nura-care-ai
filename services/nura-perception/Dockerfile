@@ -22,9 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ ./src/
 
-# Non-root user for security
-RUN useradd -m -u 1000 nura && chown -R nura:nura /app
+# Create directories for models and cache
+RUN mkdir -p /app/models /app/.cache && \
+    useradd -m -u 1000 nura && \
+    chown -R nura:nura /app
+
 USER nura
+
+# Download YOLO model at build time
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
 EXPOSE 8000
 
