@@ -5,6 +5,7 @@ import { connect, MqttClient } from 'mqtt';
 import { connect as natsConnect, NatsConnection, JSONCodec } from 'nats';
 import { WiFiSensingEvent } from './entities/wifi-sensing-event.entity';
 import { WiFiRoom } from './entities/wifi-room.entity';
+import { ConfigService } from './config/config.service';
 
 interface RuViewMessage {
   room_id: string;
@@ -21,20 +22,13 @@ export class WiFiSensingService implements OnModuleInit {
   private natsClient: NatsConnection;
   private readonly jc = JSONCodec();
 
-  private readonly mqttUrl: string;
-  private readonly natsUrl: string;
-  private readonly ruviewTopic: string;
-
   constructor(
+    private readonly config: ConfigService,
     @InjectRepository(WiFiSensingEvent)
     private eventRepository: Repository<WiFiSensingEvent>,
     @InjectRepository(WiFiRoom)
     private roomRepository: Repository<WiFiRoom>,
-  ) {
-    this.mqttUrl = process.env.MQTT_URL || 'mqtt://mosquitto:1883';
-    this.natsUrl = process.env.NATS_URL || 'nats://nats:4222';
-    this.ruviewTopic = process.env.RUVIEW_TOPIC || 'ruview/occupancy/#';
-  }
+  ) {}
 
   async onModuleInit() {
     await this.connectNats();
@@ -43,8 +37,8 @@ export class WiFiSensingService implements OnModuleInit {
 
   private async connectNats() {
     try {
-      this.natsClient = await natsConnect({ servers: this.natsUrl });
-      this.logger.log(`✓ Connected to NATS: ${this.natsUrl}`);
+      this.natsClient = await natsConnect({ servers: this.config.NATS_URL });
+      this.logger.log(`✓ Connected to NATS: ${this.config.NATS_URL}`);
     } catch (error) {
       this.logger.error(`Failed to connect to NATS: ${error.message}`);
     }
@@ -52,12 +46,17 @@ export class WiFiSensingService implements OnModuleInit {
 
   private async connectMqtt() {
     try {
-      this.mqttClient = connect(this.mqttUrl);
+      const mqttConfig = this.config.getMqttConfig();
+      this.mqttClient = connect(mqttConfig.url, {
+        username: mqttConfig.username || undefined,
+        password: mqttConfig.password || undefined,
+      });
 
       this.mqttClient.on('connect', () => {
-        this.logger.log(`✓ Connected to MQTT: ${this.mqttUrl}`);
-        this.mqttClient.subscribe(this.ruviewTopic, (err) => {
-          if (err) {
+        this.logger.log(`✓ Connected to MQTT: ${mqttConfig.url}`);
+        mqttConfig.topics.forEach(topic => {
+          this.mqttClient.subscribe(topic, (err) => {
+            if (err) {
             this.logger.error(`Failed to subscribe: ${err.message}`);
           } else {
             this.logger.log(`✓ Subscribed to: ${this.ruviewTopic}`);

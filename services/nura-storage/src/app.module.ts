@@ -1,15 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
+import { ConfigService } from './config/config.service';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-  ],
   controllers: [StorageController],
-  providers: [StorageService],
+  providers: [ConfigService, StorageService],
 })
 export class AppModule {}

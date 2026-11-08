@@ -3,7 +3,6 @@ Student Analytics API - Week 5
 Track student activities to enhance education and understand development
 Focus: Educational insights, developmental progress, social connections
 """
-import os
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta, date
@@ -14,6 +13,8 @@ import psycopg2
 import psycopg2.extras
 from collections import defaultdict
 
+from src.config import config
+
 logger = logging.getLogger(__name__)
 
 # Router
@@ -21,13 +22,9 @@ router = APIRouter(prefix="/api/analytics", tags=["student-analytics"])
 
 
 def get_db_connection():
-    """Get PostgreSQL connection"""
+    """Get PostgreSQL connection using centralized config"""
     return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        database=os.getenv("POSTGRES_DB", "nura_db"),
-        user=os.getenv("POSTGRES_USER", "nura"),
-        password=os.getenv("POSTGRES_PASSWORD", "PaSSw0rd!"),
+        **config.database_config,
         cursor_factory=psycopg2.extras.RealDictCursor
     )
 

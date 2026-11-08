@@ -2,7 +2,6 @@
 Person Search API - Week 4
 Search for persons by name or photo, get current location and movement history
 """
-import os
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -15,6 +14,8 @@ import json
 import cv2
 import numpy as np
 
+from src.config import config
+
 logger = logging.getLogger(__name__)
 
 # Router
@@ -24,24 +25,18 @@ router = APIRouter(prefix="/api/persons", tags=["person-search"])
 _redis_client = None
 
 def get_redis_client():
-    """Get Redis client (singleton)"""
+    """Get Redis client (singleton) using centralized config"""
     global _redis_client
     if _redis_client is None:
-        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        redis_url = f"redis://{config.REDIS_HOST}:{config.REDIS_PORT}"
         _redis_client = redis.from_url(redis_url, decode_responses=True)
         logger.info(f"✓ Connected to Redis: {redis_url}")
     return _redis_client
 
 
 def get_db_connection():
-    """Get PostgreSQL connection"""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        database=os.getenv("POSTGRES_DB", "nura_db"),
-        user=os.getenv("POSTGRES_USER", "nura"),
-        password=os.getenv("POSTGRES_PASSWORD", "PaSSw0rd!")
-    )
+    """Get PostgreSQL connection using centralized config"""
+    return psycopg2.connect(**config.database_config)
 
 
 # Response Models

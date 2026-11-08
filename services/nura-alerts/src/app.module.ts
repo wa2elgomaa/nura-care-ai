@@ -1,26 +1,27 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AlertsModule } from './alerts/alerts.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { HealthController } from './health.controller';
+import { ConfigService } from './config/config.service';
+
+// Initialize config to get database settings
+const configService = new ConfigService();
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL,
+      ...configService.getDatabaseConfig(),
       autoLoadEntities: true,
-      synchronize: process.env.NODE_ENV !== 'production', // Disable in production
+      synchronize: false, // Use migrations
     }),
     ScheduleModule.forRoot(),
     AlertsModule,
     NotificationsModule,
   ],
   controllers: [HealthController],
+  providers: [ConfigService],
 })
 export class AppModule {}

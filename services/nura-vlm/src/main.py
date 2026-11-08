@@ -5,7 +5,6 @@ Spec: specs/022-vlm-scene-understanding/spec.md
 """
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 from contextlib import asynccontextmanager
 from typing import Optional, List
 import logging
@@ -16,6 +15,9 @@ from PIL import Image, ImageFile
 
 # Allow loading of truncated images
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+# Import centralized config
+from src.config import config
 
 # Import VLM client
 from src.vlm_client import OllamaVLMClient, PROMPT_TEMPLATES
@@ -28,27 +30,13 @@ import cv2
 
 # Initialize logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if config.DEBUG else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
-class Settings(BaseSettings):
-    """Environment configuration"""
-    nats_url: str = "nats://nats:4222"
-    ollama_url: str = "http://ollama:11434"
     vlm_model: str = "qwen3-vl:8b-instruct"  # or "qwen3-vl:8b-instruct" or "moondream" or "qwen3-vl:8b-instruct"
     site_id: str = "dev-site-001"
     log_level: str = "info"
-
-    # VLM parameters
-    vlm_temperature: float = 0.3  # Lower = more consistent
-    vlm_max_tokens: int = 500
-
-    class Config:
-        env_file = ".env"
-
 # Global VLM client and hybrid router
 vlm_client: Optional[OllamaVLMClient] = None
 hybrid_router: Optional[HybridRouter] = None
@@ -87,13 +75,13 @@ async def lifespan(app: FastAPI):
     global vlm_client, hybrid_router
 
     logger.info("Starting NURA VLM Service...")
-    logger.info(f"Ollama URL: {settings.ollama_url}")
-    logger.info(f"VLM Model: {settings.vlm_model}")
+    logger.info(f"Ollama URL: {config.OLLAMA_HOST}")
+    logger.info(f"VLM Model: {config.OLLAMA_MODEL}")
 
     # Initialize Ollama VLM client
     vlm_client = OllamaVLMClient(
-        base_url=settings.ollama_url,
-        model=settings.vlm_model
+        base_url=config.OLLAMA_HOST,
+        model=config.OLLAMA_MODEL
     )
 
     # Check Ollama connectivity
@@ -103,9 +91,9 @@ async def lifespan(app: FastAPI):
         models = await vlm_client.list_models()
         logger.info(f"✓ Available models: {models}")
 
-        if settings.vlm_model not in models:
-            logger.warning(f"⚠ Model {settings.vlm_model} not found in Ollama!")
-            logger.warning(f"Run: ollama pull {settings.vlm_model}")
+        if config.OLLAMA_MODEL not in models:
+            logger.warning(f"⚠ Model {config.OLLAMA_MODEL} not found in Ollama!")
+            logger.warning(f"Run: ollama pull {config.OLLAMA_MODEL}")
     else:
         logger.error("✗ Ollama connection failed!")
         logger.error("VLM service will start but analyses will fail")
@@ -134,7 +122,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-settings = Settings()
+# Log configuration on startup
+config.log_configuration()
+
+# Validate configuration
+valid, errors = config.validate_all()
+if not valid:
+    logger.error("Configuration validation failed - some features may not work correctly")
 
 # Include visitor management routes (Week 3)
 from src.visitor_api import router as visitor_router

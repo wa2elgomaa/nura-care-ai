@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { Alert, AlertSeverity, AlertStatus } from '../entities/alert.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClipProcessingQueue } from '../entities/clip-processing-queue.entity';
+import { ConfigService } from '../config/config.service';
 
 @Injectable()
 export class AlertsService implements OnModuleInit {
@@ -13,10 +14,8 @@ export class AlertsService implements OnModuleInit {
   private natsConnection: NatsConnection;
   private readonly jc = JSONCodec();
 
-  private readonly AGGREGATION_WINDOW = parseInt(process.env.ALERT_AGGREGATION_WINDOW || '30', 10) * 1000; // ms
-  private readonly NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
-
   constructor(
+    private readonly config: ConfigService,
     @InjectRepository(Alert)
     private alertRepository: Repository<Alert>,
     @InjectRepository(ClipProcessingQueue)
@@ -31,8 +30,8 @@ export class AlertsService implements OnModuleInit {
 
   private async connectNats() {
     try {
-      this.natsConnection = await connect({ servers: this.NATS_URL });
-      this.logger.log(`✅ Connected to NATS at ${this.NATS_URL}`);
+      this.natsConnection = await connect({ servers: this.config.NATS_URL });
+      this.logger.log(`✅ Connected to NATS at ${this.config.NATS_URL}`);
     } catch (error) {
       this.logger.error(`❌ Failed to connect to NATS: ${error.message}`);
       throw error;

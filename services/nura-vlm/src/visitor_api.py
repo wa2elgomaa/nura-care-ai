@@ -2,7 +2,6 @@
 Visitor Management API - Week 3
 Temporary visitor enrollment for stranger detection whitelist
 """
-import os
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -14,6 +13,7 @@ import psycopg2
 import cv2
 import numpy as np
 
+from src.config import config
 from src.storage_client import get_storage_client
 
 logger = logging.getLogger(__name__)
@@ -40,14 +40,8 @@ class VisitorEnrollRequest(BaseModel):
 
 
 def get_db_connection():
-    """Get PostgreSQL connection"""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        database=os.getenv("POSTGRES_DB", "nura_db"),
-        user=os.getenv("POSTGRES_USER", "nura"),
-        password=os.getenv("POSTGRES_PASSWORD", "Pa$$w0rd!")
-    )
+    """Get PostgreSQL connection using centralized config"""
+    return psycopg2.connect(**config.database_config)
 
 
 @router.post("/enroll", response_model=VisitorResponse)

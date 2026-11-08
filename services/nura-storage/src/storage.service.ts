@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from './config/config.service';
 import { createWriteStream, createReadStream } from 'fs';
 import { mkdir, stat, unlink, readdir } from 'fs/promises';
 import { join } from 'path';
@@ -12,13 +12,6 @@ export interface StorageMetadata {
   path: string;
 }
 
-export enum StorageBackend {
-  LOCAL = 'local',
-  S3 = 's3',
-  GCS = 'gcs',
-  AZURE = 'azure',
-}
-
 /**
  * Centralized storage service for all file operations
  * Supports multiple backends: local filesystem, S3, GCS, Azure Blob
@@ -27,18 +20,12 @@ export enum StorageBackend {
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private readonly backend: StorageBackend;
+  private readonly backend: string;
   private readonly baseDir: string;
 
-  constructor(private readonly configService: ConfigService) {
-    this.backend = this.configService.get<StorageBackend>(
-      'STORAGE_BACKEND',
-      StorageBackend.LOCAL
-    );
-    this.baseDir = this.configService.get<string>(
-      'STORAGE_BASE_DIR',
-      '/tmp/nura-storage'
-    );
+  constructor(private readonly config: ConfigService) {
+    this.backend = this.config.STORAGE_BACKEND;
+    this.baseDir = this.config.STORAGE_BASE_PATH;
 
     this.logger.log(`Storage backend: ${this.backend}`);
     this.logger.log(`Storage base directory: ${this.baseDir}`);
