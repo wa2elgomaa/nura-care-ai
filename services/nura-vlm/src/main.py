@@ -148,6 +148,10 @@ app.include_router(guardian_router)
 from src.person_search_api import router as person_search_router
 app.include_router(person_search_router)
 
+# Include student analytics routes (Week 5)
+from src.student_analytics_api import router as student_analytics_router
+app.include_router(student_analytics_router)
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
