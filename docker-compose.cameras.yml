@@ -1,0 +1,100 @@
+# Camera Feed Publishers
+# Simulates 4 camera zones using looped video files streaming to MediaMTX
+# MediaMTX must be running first (started by main compose.yaml)
+
+services:
+  # Classroom 1 - class_1_01.mp4
+  camera-class-1:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-1
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_1.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://nura-mediamtx-1:8554/class_1
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  # Classroom 2 - class_2_02.mp4
+  camera-class-2:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-2
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_2.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://nura-mediamtx-1:8554/class_2
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  # Classroom 3 - class_3_06.mp4
+  camera-class-3:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-3
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_3.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://nura-mediamtx-1:8554/class_3
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  # Playground - playground_1_04.mp4
+  camera-playground:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-playground
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/playground_1.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://nura-mediamtx-1:8554/playground_1
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+networks:
+  nura_camera_net:
+    external: true

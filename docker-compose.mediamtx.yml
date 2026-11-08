@@ -1,0 +1,121 @@
+# MediaMTX RTSP Server for Camera Simulation
+# Streams video files as RTSP feeds for testing
+version: '3.8'
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: nura-mediamtx
+    ports:
+      - "8554:8554"    # RTSP
+      - "1935:1935"    # RTMP
+      - "8888:8888"    # HLS
+      - "8889:8889"    # WebRTC
+      - "8890:8890/udp" # SRT
+    volumes:
+      - ./config/mediamtx.yml:/mediamtx.yml:ro
+      - ./tests/real-videos:/videos:ro
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  # FFmpeg publishers - stream video files to MediaMTX
+  camera-class-1:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-1
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_1_01.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://mediamtx:8554/class_1
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  camera-class-2:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-2
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_2_02.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://mediamtx:8554/class_2
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  camera-class-3:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-class-3
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/class_3_06.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://mediamtx:8554/class_3
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+  camera-playground:
+    image: linuxserver/ffmpeg:latest
+    container_name: nura-camera-playground
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./tests/real-videos:/videos:ro
+    command: >
+      -stream_loop -1
+      -re
+      -i /videos/playground_1_04.mp4
+      -c:v libx264
+      -preset ultrafast
+      -b:v 2M
+      -maxrate 2M
+      -bufsize 4M
+      -g 30
+      -c:a aac
+      -f rtsp
+      rtsp://mediamtx:8554/playground_1
+    networks:
+      - nura_camera_net
+    restart: unless-stopped
+
+networks:
+  nura_camera_net:
+    external: true

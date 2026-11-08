@@ -262,23 +262,6 @@ services:
     environment:
       API_URL: http://nura-api
 
-  nura-perception:
-    # detector + tracker (Python); reads Frigate's restream
-    <<: *nura-stub
-    build:
-      context: ./services/nura-perception
-    image: ${NURA_PERCEPTION_IMAGE:-nura/perception:dev}
-    environment:
-      <<: *nura-env
-      RTSP_BASE: rtsp://frigate:8554
-      FRIGATE_API: http://frigate:5000
-      DETECTION_CONFIDENCE: ${DETECTION_CONFIDENCE:-0.5}
-      FALL_THRESHOLD: ${FALL_THRESHOLD:-0.7}
-    depends_on:
-      - frigate
-      - nats
-    networks: [ core_net, camera_net ]
-
   nura-sensor-adapter:
     # MQTT (RuView / sensors) -> NATS events
     <<: *nura-stub

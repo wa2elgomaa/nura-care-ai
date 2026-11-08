@@ -1,37 +1,225 @@
-# Frigate config for testing with local video file
+# Frigate Configuration - NURA Childcare AI
+# Connected to MediaMTX RTSP streams (simulated camera feeds)
+
 mqtt:
+  enabled: true
   host: mosquitto
   port: 1883
+  topic_prefix: frigate
+  client_id: frigate
+
+database:
+  path: /db/frigate.db
 
 detectors:
   cpu1:
     type: cpu
     num_threads: 3
 
+# Global object detection settings
+objects:
+  track:
+    - person
+  filters:
+    person:
+      min_area: 1000
+      max_area: 100000
+      threshold: 0.7
+
+# Cameras - 4 zones with RTSP feeds from MediaMTX
 cameras:
-  classroom_test:
+  # Classroom 1
+  class_1:
     enabled: true
     ffmpeg:
       inputs:
-        - path: /media/frigate/classroom_6.mp4
-          input_args: -re -stream_loop -1 -fflags +genpts
-          roles: [detect]
+        - path: rtsp://mediamtx:8554/class_1
+          roles:
+            - detect
+            - record
     detect:
       enabled: true
-      width: 1920
-      height: 1080
+      width: 1280
+      height: 720
       fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+        mode: motion
+      events:
+        retain:
+          default: 30
+          mode: motion
+    snapshots:
+      enabled: true
+      timestamp: false
+      bounding_box: true
+      crop: false
+      retain:
+        default: 30
     objects:
       track:
         - person
       filters:
         person:
-          min_area: 1000
-          threshold: 0.3
+          min_area: 2000
+          threshold: 0.75
+
+  # Classroom 2
+  class_2:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/class_2
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
     record:
-      enabled: false
+      enabled: true
+      retain:
+        days: 7
+        mode: motion
+      events:
+        retain:
+          default: 30
+          mode: motion
     snapshots:
       enabled: true
       timestamp: false
       bounding_box: true
+      crop: false
+      retain:
+        default: 30
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_area: 2000
+          threshold: 0.75
+
+  # Classroom 3
+  class_3:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/class_3
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+        mode: motion
+      events:
+        retain:
+          default: 30
+          mode: motion
+    snapshots:
+      enabled: true
+      timestamp: false
+      bounding_box: true
+      crop: false
+      retain:
+        default: 30
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_area: 2000
+          threshold: 0.75
+
+  # Playground
+  playground_1:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://mediamtx:8554/playground_1
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    record:
+      enabled: true
+      retain:
+        days: 7
+        mode: motion
+      events:
+        retain:
+          default: 30
+          mode: motion
+    snapshots:
+      enabled: true
+      timestamp: false
+      bounding_box: true
+      crop: false
+      retain:
+        default: 30
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_area: 2000
+          threshold: 0.75
+
+# Recording settings
+record:
+  enabled: true
+  retain:
+    days: 7
+    mode: motion
+  events:
+    pre_capture: 5
+    post_capture: 5
+    retain:
+      default: 30
+      mode: motion
+
+# Snapshot settings
+snapshots:
+  enabled: true
+  clean_copy: true
+  timestamp: false
+  bounding_box: true
+  crop: false
+  retain:
+    default: 30
+
+# Live view settings
+live:
+  height: 720
+  quality: 8
+
+# Birdseye (multi-camera view)
+birdseye:
+  enabled: true
+  mode: continuous
+  width: 1280
+  height: 720
+  quality: 8
+
+# Logging
+logger:
+  default: info
+  logs:
+    frigate.mqtt: debug
+
 version: 0.18-0

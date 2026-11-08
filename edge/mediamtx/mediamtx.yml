@@ -131,23 +131,36 @@ paths:
     sourceOnDemand: false
     # Accessible at: rtsp://localhost:8554/test
 
-  # Classroom cameras (add your actual cameras here)
-  # Example:
-  # classroom_1:
-  #   source: rtsp://admin:password@192.168.1.101/stream
-  #   sourceProtocol: rtsp
-  #   sourceOnDemand: yes
-  #   runOnReady: ffmpeg -i rtsp://localhost:$RTSP_PORT/$MTX_PATH -c copy -f rtsp rtsp://frigate:8554/$MTX_PATH
+  # Simulated camera feeds from video files
+  # These are published by FFmpeg containers streaming looped video files
 
-  # classroom_2:
-  #   source: rtsp://admin:password@192.168.1.102/stream
-  #   sourceProtocol: rtsp
-  #   sourceOnDemand: yes
+  class_1:
+    source: publisher
+    sourceOnDemand: false
+    runOnReady: echo "✓ Camera class_1 is streaming"
+    runOnNotReady: echo "✗ Camera class_1 stopped"
+    # Accessible at: rtsp://mediamtx:8554/class_1
 
-  # playground:
-  #   source: rtsp://admin:password@192.168.1.103/stream
-  #   sourceProtocol: rtsp
-  #   sourceOnDemand: yes
+  class_2:
+    source: publisher
+    sourceOnDemand: false
+    runOnReady: echo "✓ Camera class_2 is streaming"
+    runOnNotReady: echo "✗ Camera class_2 stopped"
+    # Accessible at: rtsp://mediamtx:8554/class_2
+
+  class_3:
+    source: publisher
+    sourceOnDemand: false
+    runOnReady: echo "✓ Camera class_3 is streaming"
+    runOnNotReady: echo "✗ Camera class_3 stopped"
+    # Accessible at: rtsp://mediamtx:8554/class_3
+
+  playground_1:
+    source: publisher
+    sourceOnDemand: false
+    runOnReady: echo "✓ Camera playground_1 is streaming"
+    runOnNotReady: echo "✗ Camera playground_1 stopped"
+    # Accessible at: rtsp://mediamtx:8554/playground_1
 
 # ==============================================================================
 # API Server (For management and monitoring)
